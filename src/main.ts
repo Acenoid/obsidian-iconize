@@ -51,6 +51,7 @@ import {
   syncFolderNoteIcon,
 } from './lib/util/folder-note';
 import { diffIconData, mergePathEntriesFromDisk } from './lib/data-merge';
+import { addStoredIcons, collectIconSvgs } from './lib/icon-svg-store';
 import {
   processIconInTextMarkdown,
   processIconInLinkMarkdown,
@@ -142,6 +143,14 @@ export default class IconizePlugin extends Plugin {
     await this.iconPackManager.loadAll();
     // TODO: Check if needed
     await this.iconPackManager.loadUsedIcons([...usedIconNames]);
+    const storedIconSvgs = this.getSettings().iconSvgs;
+    addStoredIcons(this, storedIconSvgs);
+    if (
+      JSON.stringify(collectIconSvgs(this, storedIconSvgs)) !==
+      JSON.stringify(storedIconSvgs)
+    ) {
+      await this.saveIconFolderData();
+    }
 
     this.app.workspace.onLayoutReady(() => this.handleChangeLayout());
 
@@ -999,7 +1008,8 @@ export default class IconizePlugin extends Plugin {
   /**
    * The single entry point for writing `data.json`. It reloads the current
    * on-disk file, refreshes the in-memory icon path entries from it, lets the
-   * caller apply its specific change on top, and writes the result back.
+   * caller apply its specific change on top, recomputes the stored icon SVGs,
+   * and writes the result back.
    *
    * This prevents a stale in-memory snapshot from clobbering icon entries that
    * Obsidian Sync wrote to disk from another device while this instance was
@@ -1010,6 +1020,10 @@ export default class IconizePlugin extends Plugin {
       const onDisk = await this.loadData();
       this.data = mergePathEntriesFromDisk(this.data, onDisk);
       mutate();
+      this.getSettings().iconSvgs = collectIconSvgs(this, {
+        ...onDisk?.settings?.iconSvgs,
+        ...this.getSettings().iconSvgs,
+      });
       await this.saveData(this.data);
     };
     this.persistChain = this.persistChain.then(run, run);
@@ -1021,10 +1035,11 @@ export default class IconizePlugin extends Plugin {
   }
 
   /**
-   * Reloads icon path entries from the on-disk `data.json` and re-renders only
-   * the icons that changed. Triggered when the file is modified externally
-   * (e.g. by Obsidian Sync) so icons set on another device appear without a
-   * restart. Our own writes produce no diff here, so this does not loop.
+   * Reloads icon path entries and stored SVGs from the on-disk `data.json` and
+   * re-renders only the icons that changed or whose SVG just arrived. Triggered
+   * when the file is modified externally (e.g. by Obsidian Sync) so icons set
+   * on another device appear without a restart. Our own writes produce no diff
+   * here, so this does not loop.
    */
   private async handleExternalDataChange(): Promise<void> {
     const onDisk = await this.loadData();
@@ -1032,8 +1047,27 @@ export default class IconizePlugin extends Plugin {
       return;
     }
 
+    const added = new Set(
+      addStoredIcons(this, onDisk.settings?.iconSvgs ?? {}),
+    );
+    for (const rule of customRule.getSortedRules(this)) {
+      if (added.has(rule.icon)) {
+        await customRule.removeFromAllFiles(this, rule);
+        await customRule.addToAllFiles(this, rule);
+      }
+    }
+
     const next = mergePathEntriesFromDisk(this.data, onDisk);
     const { removed, changed } = diffIconData(this.data, next);
+    for (const [path, value] of Object.entries(next)) {
+      const iconName =
+        typeof value === 'object'
+          ? (value as FolderIconObject)?.iconName
+          : value;
+      if (path !== 'settings' && added.has(iconName as string)) {
+        changed.push([path, value]);
+      }
+    }
     if (removed.length === 0 && changed.length === 0) {
       return;
     }
@@ -1056,6 +1090,7 @@ export default class IconizePlugin extends Plugin {
           : (value as FolderIconObject).iconColor;
       if (iconName) {
         dom.createIconNode(this, path, iconName, { color: iconColor });
+        syncFolderNoteIcon(this, path, iconName, iconColor);
       }
     }
   }

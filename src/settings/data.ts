@@ -186,6 +186,11 @@ export interface IconFolderSettings {
    * @default false
    */
   useInternalPlugins?: boolean;
+  /**
+   * SVGs of the icons in use, except native Lucide icons, keyed by prefixed name.
+   * @default {}
+   */
+  iconSvgs: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: IconFolderSettings = {
@@ -216,4 +221,5 @@ export const DEFAULT_SETTINGS: IconFolderSettings = {
   lucideIconPackType: 'native',
   debugMode: false,
   useInternalPlugins: false,
+  iconSvgs: {},
 };

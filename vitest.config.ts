@@ -14,12 +14,13 @@ export default defineConfig({
         functions: 60,
         statements: 60,
         // Fork-authored files must be fully covered.
-        '{src/lib/data-merge.ts,src/lib/util/folder-note.ts}': {
-          lines: 100,
-          branches: 100,
-          functions: 100,
-          statements: 100,
-        },
+        '{src/lib/data-merge.ts,src/lib/icon-svg-store.ts,src/lib/util/folder-note.ts}':
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
       },
     },
   },
