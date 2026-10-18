@@ -3,7 +3,7 @@ import { processIconInTextMarkdown } from './icon-in-text';
 
 vi.mock('@app/lib/icon', () => ({
   default: {
-    getIconByName: (name: string) =>
+    getIconByName: (_plugin: unknown, name: string) =>
       name === 'LiWrench'
         ? {
             svgElement: '<svg viewBox="0 0 24 24"><path d="M0 0"></path></svg>',
