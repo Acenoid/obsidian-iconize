@@ -41,8 +41,7 @@ export default {
   input: './src/main.ts',
   output: {
     file: './main.js',
-    sourcemap: 'inline',
-    sourcemapExcludeSources: isProd,
+    sourcemap: isProd ? false : 'inline',
     format: 'cjs',
     exports: 'default',
     banner,
@@ -55,7 +54,9 @@ export default {
         '@lib': 'src/lib',
       },
     }),
-    typescript(),
+    typescript(
+      isProd ? { inlineSourceMap: false, inlineSources: false } : undefined,
+    ),
     nodeResolve({ browser: true }),
     commonjs(),
     copy({
