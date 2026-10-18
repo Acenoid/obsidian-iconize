@@ -75,6 +75,75 @@ const checkForTextNodes = (
   }
 };
 
+// Elements whose late added content must never be touched, e.g. code that gets
+// highlighted later on, editors or icons that were already inserted by Iconize.
+const LATE_CONTENT_IGNORE_SELECTOR =
+  'code, pre, textarea, input, [contenteditable="true"], .cm-editor, .cm-iconize-icon';
+
+const isIgnoredLateContent = (node: Element, boundary: Element): boolean => {
+  // Only check up to the boundary, because the boundary itself might be part
+  // of an editor (e.g. a rendered widget in live preview).
+  for (
+    let current: Element | null = node;
+    current && current !== boundary;
+    current = current.parentElement
+  ) {
+    if (current.matches(LATE_CONTENT_IGNORE_SELECTOR)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Some plugins render their content asynchronously, after all markdown post
+ * processors have already run. Meta Bind for instance awaits `loadPrism()`
+ * before rendering its code blocks since version 1.3.2. Without observing the
+ * element, icon shortcodes in such content (e.g. in the options of a Meta Bind
+ * select input field) would never be replaced.
+ */
+const observeLateContent = (
+  plugin: IconizePlugin,
+  element: HTMLElement,
+): void => {
+  const observer = new MutationObserver((mutations) => {
+    const roots = new Set<HTMLElement>();
+    for (const mutation of mutations) {
+      if (mutation.type === 'characterData') {
+        const parent = mutation.target.parentElement;
+        if (parent) {
+          roots.add(parent);
+        }
+        continue;
+      }
+
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          roots.add(node as HTMLElement);
+        } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+          roots.add(node.parentElement);
+        }
+      });
+    }
+
+    roots.forEach((root) => {
+      if (!element.contains(root) || isIgnoredLateContent(root, element)) {
+        return;
+      }
+      replaceIconsInText(plugin, root);
+    });
+
+    // Discard the mutations caused by the replacements above.
+    observer.takeRecords();
+  });
+
+  observer.observe(element, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+};
+
 export const processIconInTextMarkdown = (
   plugin: IconizePlugin,
   element: HTMLElement,
@@ -82,10 +151,14 @@ export const processIconInTextMarkdown = (
   // Ignore if codeblock
   const codeElement = element.querySelector('pre > code');
   const callOut = element.querySelector('.callout');
-  if (codeElement && !callOut) {
-    return;
+  if (!codeElement || callOut) {
+    replaceIconsInText(plugin, element);
   }
 
+  observeLateContent(plugin, element);
+};
+
+const replaceIconsInText = (plugin: IconizePlugin, element: HTMLElement) => {
   const iconTreeWalker = createTreeWalker(plugin, element);
 
   const iconShortcodeRegex = createIconShortcodeRegex(plugin);
