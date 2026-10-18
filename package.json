@@ -27,9 +27,12 @@
   "author": "FlorianWoelki",
   "license": "MIT",
   "lint-staged": {
-    "*.{json,js,ts,jsx,tsx,html}": [
-      "pnpm lint",
-      "pnpm prettify"
+    "*.{js,ts,jsx,tsx}": [
+      "eslint --quiet --fix",
+      "prettier --write"
+    ],
+    "*.{json,html}": [
+      "prettier --write"
     ]
   },
   "devDependencies": {
