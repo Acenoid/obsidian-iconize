@@ -192,7 +192,11 @@ export default class CustomIconPackSetting extends IconFolderSetting {
         btn.setIcon('plus');
         btn.setTooltip('Add an icon');
         btn.onClick(async () => {
-          const fileSelector = document.createElement('input');
+          // Creates the input in the document of the button, because the settings can
+          // be opened in their own window. Electron only shows the file chooser for the
+          // window that received the click.
+          const fileSelector =
+            btn.buttonEl.ownerDocument.createElement('input');
           fileSelector.setAttribute('type', 'file');
           fileSelector.setAttribute('multiple', 'multiple');
           fileSelector.setAttribute('accept', '.svg');
