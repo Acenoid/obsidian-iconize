@@ -43,7 +43,11 @@ import {
   buildIconInLinksPlugin,
   buildIconInTextPlugin,
 } from './editor/live-preview';
-import { PositionField, buildPositionField } from './editor/live-preview/state';
+import {
+  PositionField,
+  buildPositionField,
+  refreshIconPositions,
+} from './editor/live-preview/state';
 import { calculateInlineTitleSize } from './lib/util/text';
 import {
   getFrontmatterIcon,
@@ -62,6 +66,8 @@ import { logger } from './lib/logger';
 import { EventEmitter } from './lib/event/event';
 import IconizeAPI, { getApi } from './lib/api';
 import { Icon, IconPackManager } from './icon-pack-manager';
+import { LUCIDE_ICON_PACK_NAME } from './icon-pack-manager/lucide';
+import type { EditorView } from '@codemirror/view';
 import {
   getNormalizedName,
   getSvgFromLoadedIcon,
@@ -139,21 +145,14 @@ export default class IconizePlugin extends Plugin {
     // if (!this.doesUseCustomLucideIconPack()) {
     await this.iconPackManager.init();
     // }
-    // Load all icons from zip files into memory before trying to load used icons.
-    // This ensures icons are available even if .svg cache files don't sync (e.g., mobile).
-    await this.iconPackManager.loadAll();
-    // TODO: Check if needed
+    // Only loads the used icons from their SVG files or from the SVGs stored in
+    // `data.json`. Reading all zip files takes a few seconds, so they are loaded in the
+    // background when the layout is ready.
     await this.iconPackManager.loadUsedIcons([...usedIconNames]);
-    const storedIconSvgs = this.getSettings().iconSvgs;
-    addStoredIcons(this, storedIconSvgs);
-    if (
-      JSON.stringify(collectIconSvgs(this, storedIconSvgs)) !==
-      JSON.stringify(storedIconSvgs)
-    ) {
-      await this.saveIconFolderData();
-    }
+    addStoredIcons(this, this.getSettings().iconSvgs);
 
     this.app.workspace.onLayoutReady(() => this.handleChangeLayout());
+    this.app.workspace.onLayoutReady(() => this.loadIconPacksInBackground());
     this.app.workspace.onLayoutReady(() => {
       getOriginalPluginWarnings(
         this.app.plugins.enabledPlugins,
@@ -475,6 +474,114 @@ export default class IconizePlugin extends Plugin {
     }
   }
 
+  /**
+   * Reads all icon pack zip files. This takes a few seconds, so it runs when the layout
+   * is ready instead of delaying the start of Obsidian. Afterwards, it adds the icons
+   * that were missing at startup and redraws the icons in open notes.
+   */
+  private async loadIconPacksInBackground(): Promise<void> {
+    await this.iconPackManager.loadAll();
+    await this.addIconsMissingAtStartup();
+
+    const storedIconSvgs = this.getSettings().iconSvgs;
+    if (
+      JSON.stringify(collectIconSvgs(this, storedIconSvgs)) !==
+      JSON.stringify(storedIconSvgs)
+    ) {
+      await this.saveIconFolderData();
+    }
+
+    this.redrawIconsInOpenNotes();
+
+    // Checks the vault for missing icons and adds them.
+    if (this.getSettings().iconsBackgroundCheckEnabled) {
+      const data = Object.entries(this.data) as [
+        string,
+        string | FolderIconObject,
+      ][];
+      await icon.checkMissingIcons(this, data);
+      // TODO: Check if needed
+      // resetPreloadedIcons();
+    }
+
+    this.eventEmitter.emit('allIconsLoaded');
+  }
+
+  /**
+   * Adds the used icons that had neither an SVG file nor an SVG stored in `data.json`
+   * at startup, so they were only available in the zip files.
+   */
+  private async addIconsMissingAtStartup(): Promise<void> {
+    const preloadedIconNames = new Set(
+      this.iconPackManager
+        .getPreloadedIcons()
+        .map((preloadedIcon) => preloadedIcon.prefix + preloadedIcon.name),
+    );
+    // Icons of icon packs that are not installed are skipped, because their notice was
+    // already shown at startup.
+    const missingIconNames = new Set(
+      [...this.getUsedIcons()].filter(
+        (iconName) =>
+          !emoji.isEmoji(iconName) &&
+          !preloadedIconNames.has(iconName) &&
+          this.iconPackManager.getIconPackByPrefix(
+            iconName.substring(0, nextIdentifier(iconName)),
+          ),
+      ),
+    );
+    if (missingIconNames.size === 0) {
+      return;
+    }
+
+    await this.iconPackManager.loadUsedIcons([...missingIconNames]);
+    for (const { path, icon: iconName } of icon.getAllWithPath(this)) {
+      if (missingIconNames.has(iconName)) {
+        dom.createIconNode(this, path, iconName, {
+          color: this.getIconColor(path),
+        });
+      }
+    }
+
+    for (const rule of customRule.getSortedRules(this)) {
+      if (missingIconNames.has(rule.icon)) {
+        await customRule.removeFromAllFiles(this, rule);
+        await customRule.addToAllFiles(this, rule);
+      }
+    }
+  }
+
+  /**
+   * Redraws the icons in open notes, because icons from the icon packs were not
+   * available yet when the notes were rendered at startup.
+   */
+  private redrawIconsInOpenNotes(): void {
+    const hasIconPacksFromFiles = this.iconPackManager
+      .getIconPacks()
+      .some(
+        (iconPack) =>
+          iconPack.getName() !== LUCIDE_ICON_PACK_NAME ||
+          this.doesUseCustomLucideIconPack(),
+      );
+    if (!hasIconPacksFromFiles) {
+      return;
+    }
+
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      // Deferred views are rendered later with all icons.
+      if (!(leaf.view instanceof MarkdownView)) {
+        continue;
+      }
+
+      if (leaf.view.getMode() === 'preview') {
+        leaf.view.previewMode.rerender(true);
+      }
+
+      const editorView = (leaf.view.editor as unknown as { cm?: EditorView })
+        .cm;
+      editorView?.dispatch({ effects: refreshIconPositions.of(null) });
+    }
+  }
+
   private handleChangeLayout(): void {
     // Transform data that are objects to single strings.
     const data = Object.entries(this.data) as [
@@ -490,23 +597,6 @@ export default class IconizePlugin extends Plugin {
     });
 
     icon.addAll(this, data, this.registeredFileExplorers, () => {
-      // The icon packs are already loaded in `onload`, so this only checks the vault for
-      // missing icons and adds them.
-      const checkMissingIcons = async (): Promise<void> => {
-        if (this.getSettings().iconsBackgroundCheckEnabled) {
-          const data = Object.entries(this.data) as [
-            string,
-            string | FolderIconObject,
-          ][];
-          await icon.checkMissingIcons(this, data);
-          // TODO: Check if needed
-          // resetPreloadedIcons();
-        }
-
-        this.eventEmitter.emit('allIconsLoaded');
-      };
-      checkMissingIcons();
-
       if (this.getSettings().iconInFrontmatterEnabled) {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {

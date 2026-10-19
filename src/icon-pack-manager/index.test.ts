@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
+import { Notice } from 'obsidian';
 import { IconPackManager } from '.';
 import { IconPack } from './icon-pack';
 import { LUCIDE_ICON_PACK_NAME } from './lucide';
@@ -62,7 +63,9 @@ describe('IconPackManager.loadAll', () => {
     });
 
     const manager = new IconPackManager(plugin, ICONS_PATH);
+    expect(manager.hasLoadedAll()).toBe(false);
     await manager.loadAll();
+    expect(manager.hasLoadedAll()).toBe(true);
 
     const landonPack = manager.getIconPackByName('landon');
     expect(landonPack).toBeDefined();
@@ -148,6 +151,72 @@ describe('IconPackManager.init', () => {
     expect(
       manager.getIconPackByName(LUCIDE_ICON_PACK_NAME).getIcons(),
     ).toHaveLength(1);
+  });
+});
+
+describe('IconPackManager with custom icon packs', () => {
+  const svgContent = '<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>';
+
+  it('should register custom icon packs at startup without reading their icons', async () => {
+    const plugin = makePlugin({
+      list: vi.fn((path: string) => {
+        if (path === ICONS_PATH) {
+          return Promise.resolve({
+            files: [`${ICONS_PATH}/remix-icons.zip`],
+            folders: [
+              `${ICONS_PATH}/remix-icons`,
+              `${ICONS_PATH}/landon`,
+              `${ICONS_PATH}/lucide-icons`,
+            ],
+          });
+        }
+        return Promise.resolve({ files: [], folders: [] });
+      }),
+      read: vi.fn().mockResolvedValue(svgContent),
+    });
+
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    await manager.init();
+
+    expect(
+      manager.getIconPacks().map((iconPack) => iconPack.getName()),
+    ).toEqual(['remix-icons', 'landon']);
+    expect(manager.getIconPackByName('landon').getIsCustom()).toBe(true);
+    expect(plugin.app.vault.adapter.read).not.toHaveBeenCalled();
+
+    await manager.loadUsedIcons(['LaCalendarTuesday']);
+
+    expect(Notice).not.toHaveBeenCalled();
+    expect(manager.getPreloadedIcons()).toHaveLength(1);
+    expect(plugin.app.vault.adapter.read).toHaveBeenCalledWith(
+      `${ICONS_PATH}/landon/CalendarTuesday.svg`,
+    );
+  });
+
+  it('should load the icons into the custom icon pack registered at startup', async () => {
+    const plugin = makePlugin({
+      list: vi.fn((path: string) => {
+        if (path === ICONS_PATH) {
+          return Promise.resolve({
+            files: [],
+            folders: [`${ICONS_PATH}/landon`],
+          });
+        }
+        return Promise.resolve({
+          files: [`${ICONS_PATH}/landon/CalendarTuesday.svg`],
+          folders: [],
+        });
+      }),
+      read: vi.fn().mockResolvedValue(svgContent),
+    });
+
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    await manager.init();
+    const iconPack = manager.getIconPackByName('landon');
+    await manager.loadAll();
+
+    expect(manager.getIconPacks()).toEqual([iconPack]);
+    expect(iconPack.getIcons()).toHaveLength(1);
   });
 });
 

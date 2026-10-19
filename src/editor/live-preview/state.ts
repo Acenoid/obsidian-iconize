@@ -9,12 +9,20 @@ import {
   RangeSet,
   RangeSetBuilder,
   RangeValue,
+  StateEffect,
   StateField,
 } from '@codemirror/state';
 import IconizePlugin from '@app/main';
 import emoji from '@app/emoji';
 
 export type PositionField = StateField<RangeSet<IconPosition>>;
+
+/**
+ * Effect that updates the icons in the editor, e.g. after the icon packs were loaded in
+ * the background. The position field checks all icons of the document on every
+ * transaction without changes to the document, so it only needs to be dispatched.
+ */
+export const refreshIconPositions = StateEffect.define<null>();
 
 type UpdateRangeFunc = (
   from: number,

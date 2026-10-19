@@ -113,10 +113,16 @@ export default class CustomIconPackSetting extends IconFolderSetting {
       const isLucideIconPack = iconPack.getName() === LUCIDE_ICON_PACK_NAME;
       const additionalLucideDescription =
         '(Native Pack has fewer icons but 100% Obsidian Sync support)';
+      // Icon packs from files are read in the background after startup.
+      const totalIcons =
+        this.plugin.getIconPackManager().hasLoadedAll() ||
+        (isLucideIconPack && this.plugin.doesUseNativeLucideIconPack())
+          ? iconPack.getIcons().length
+          : 'loading...';
       const iconPackSetting = new Setting(this.containerEl)
         .setName(`${iconPack.getName()} (${iconPack.getPrefix()})`)
         .setDesc(
-          `Total icons: ${iconPack.getIcons().length}${isLucideIconPack ? ` ${additionalLucideDescription}` : ''}`,
+          `Total icons: ${totalIcons}${isLucideIconPack ? ` ${additionalLucideDescription}` : ''}`,
         );
       // iconPackSetting.addButton((btn) => {
       //   btn.setIcon('broken-link');

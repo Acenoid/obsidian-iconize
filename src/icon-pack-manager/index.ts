@@ -27,6 +27,7 @@ export class IconPackManager {
   private fileManager: FileManager;
 
   private preloadedIcons: Icon[];
+  private loadedAll: boolean;
 
   constructor(
     private plugin: IconizePlugin,
@@ -38,6 +39,7 @@ export class IconPackManager {
     this.fileManager = new FileManager(plugin);
     this.iconPacks = [];
     this.preloadedIcons = [];
+    this.loadedAll = false;
   }
 
   public async init(): Promise<void> {
@@ -60,6 +62,22 @@ export class IconPackManager {
         this.iconPacks.push(iconPack);
         logger.info(`Initialized icon pack '${iconPackName}'`);
       }
+    }
+
+    // Registers the custom icon packs, which are directories without a zip file, so
+    // their used icons can be loaded at startup. All their icons are read in `loadAll`.
+    for (let i = 0; i < loadedIconPacks.folders.length; i++) {
+      const folder = loadedIconPacks.folders[i];
+      const folderName = folder.split('/').pop();
+      if (
+        folderName === LUCIDE_ICON_PACK_NAME ||
+        loadedIconPacks.files.includes(`${folder}.zip`)
+      ) {
+        continue;
+      }
+
+      this.iconPacks.push(new IconPack(this.plugin, folderName, true));
+      logger.info(`Initialized icon pack '${folderName}'`);
     }
 
     if (this.plugin.doesUseNativeLucideIconPack()) {
@@ -102,7 +120,15 @@ export class IconPackManager {
         continue;
       }
 
-      const iconPack = new IconPack(this.plugin, folderName, true);
+      // Uses the icon pack registered in `init`, but never replaces the icons of the
+      // Lucide icon pack.
+      const existingIconPack = this.getIconPackByName(folderName);
+      if (existingIconPack && !existingIconPack.getIsCustom()) {
+        continue;
+      }
+
+      const iconPack =
+        existingIconPack ?? new IconPack(this.plugin, folderName, true);
 
       const files = await this.fileManager.getFilesInDirectory(
         `${this.path}/${folderName}`,
@@ -122,12 +148,12 @@ export class IconPackManager {
       }
 
       iconPack.setIcons(loadedIcons);
-      if (!this.getIconPackByName(folderName)) {
+      if (!existingIconPack) {
         this.iconPacks.push(iconPack);
-        logger.info(
-          `Loaded icon pack '${folderName}' (amount of icons: ${loadedIcons.length})`,
-        );
       }
+      logger.info(
+        `Loaded icon pack '${folderName}' (amount of icons: ${loadedIcons.length})`,
+      );
     }
 
     // Extract all files from the zip files.
@@ -156,6 +182,8 @@ export class IconPackManager {
         `Loaded icon pack '${zipFile}' (amount of icons: ${loadedIcons.length})`,
       );
     }
+
+    this.loadedAll = true;
   }
 
   public async createDefaultDirectory(): Promise<void> {
@@ -429,6 +457,14 @@ export class IconPackManager {
 
   public getIconPacks(): IconPack[] {
     return this.iconPacks;
+  }
+
+  /**
+   * Returns whether all icon packs were read. Until then, only the native Lucide icons
+   * and the used icons are available.
+   */
+  public hasLoadedAll(): boolean {
+    return this.loadedAll;
   }
 
   public getPreloadedIcons(): Icon[] {

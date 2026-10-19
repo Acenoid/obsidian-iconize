@@ -102,10 +102,14 @@ export default class OutlineInternalPlugin extends InternalPluginInjector {
       }
     };
 
-    // The icon packs are loaded before the layout is ready, so the icons can be set
-    // without waiting for the `allIconsLoaded` event.
     const setOutlineIcons = () => {
+      // Sets the icons that are already available and updates them again when the icon
+      // packs were read in the background. If that already happened, the event does not
+      // fire anymore, but all icons are set right away.
       updateTreeItems();
+      this.plugin
+        .getEventEmitter()
+        .once('allIconsLoaded', () => updateTreeItems());
 
       const callback = (mutations: MutationRecord[]) => {
         mutations.forEach((mutation) => {

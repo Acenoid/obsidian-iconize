@@ -6,6 +6,7 @@ import {
   ViewUpdate,
 } from '@codemirror/view';
 import { buildLinkDecorations } from '@app/editor/live-preview/decorations';
+import { refreshIconPositions } from '@app/editor/live-preview/state';
 
 export const buildIconInLinksPlugin = (plugin: IconizePlugin) => {
   return ViewPlugin.fromClass(
@@ -21,7 +22,15 @@ export const buildIconInLinksPlugin = (plugin: IconizePlugin) => {
       destroy() {}
 
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) {
+        if (
+          update.docChanged ||
+          update.viewportChanged ||
+          update.transactions.some((transaction) =>
+            transaction.effects.some((effect) =>
+              effect.is(refreshIconPositions),
+            ),
+          )
+        ) {
           this.decorations = buildLinkDecorations(update.view, this.plugin);
         }
       }
