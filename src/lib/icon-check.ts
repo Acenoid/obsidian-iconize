@@ -46,8 +46,10 @@ export interface IconCheckItem {
 
 export interface IconProblem {
   icon: string;
-  /** Paths and custom rules that use the icon. */
-  usedBy: string[];
+  /** Paths of the files and folders that use the icon. */
+  paths: string[];
+  /** Custom rules that use the icon. */
+  rules: string[];
   shown: boolean;
 }
 
@@ -260,22 +262,26 @@ export const checkIcons = (input: IconCheckInput): IconCheckResult => {
     }
   }
 
-  const usedBy = new Map<string, string[]>();
-  const addUsage = (iconName: string, usage: string): void => {
-    if (!emoji.isEmoji(iconName)) {
-      usedBy.set(iconName, [...(usedBy.get(iconName) ?? []), usage]);
+  const usedBy = new Map<string, { paths: string[]; rules: string[] }>();
+  const getUsage = (iconName: string) => {
+    if (!usedBy.has(iconName)) {
+      usedBy.set(iconName, { paths: [], rules: [] });
     }
+    return usedBy.get(iconName);
   };
   for (const [path, value] of Object.entries(data)) {
-    if (!NON_PATH_KEYS.has(path)) {
-      addUsage(getEntryIcon(value), path);
+    const iconName = getEntryIcon(value);
+    if (!NON_PATH_KEYS.has(path) && !emoji.isEmoji(iconName)) {
+      getUsage(iconName).paths.push(path);
     }
   }
   for (const rule of input.rules) {
-    addUsage(rule.icon, `Custom rule: ${rule.rule}`);
+    if (!emoji.isEmoji(rule.icon)) {
+      getUsage(rule.icon).rules.push(rule.rule);
+    }
   }
 
-  for (const [iconName, paths] of usedBy) {
+  for (const [iconName, { paths, rules }] of usedBy) {
     const availability = input.getIconAvailability(iconName);
     if (availability !== 'available') {
       (availability === 'missing-pack'
@@ -283,7 +289,8 @@ export const checkIcons = (input: IconCheckInput): IconCheckResult => {
         : report.missingIcons
       ).push({
         icon: iconName,
-        usedBy: paths,
+        paths,
+        rules,
         shown: input.isIconShown(iconName),
       });
     }
@@ -328,9 +335,16 @@ export const getReportSummary = (report: IconCheckReport): string[] => {
   return summary;
 };
 
+/**
+ * Part of a line of the report: text, or the path of a file or folder, which
+ * the report window shows as a link if it is a file.
+ */
+export type IconCheckSegment = string | { path: string };
+
 export interface IconCheckSection {
   title: string;
-  items: string[];
+  /** One line per item, each made of segments. */
+  items: IconCheckSegment[][];
 }
 
 /**
@@ -340,16 +354,23 @@ export interface IconCheckSection {
 export const getReportSections = (
   report: IconCheckReport,
 ): IconCheckSection[] => {
-  const describeItem = (item: IconCheckItem): string =>
-    [
-      item.path,
-      item.icon && `(${item.icon})`,
-      item.detail && `– ${item.detail}`,
-    ]
-      .filter(Boolean)
-      .join(' ');
-  const describeProblem = (problem: IconProblem): string =>
-    `${problem.icon} – ${problem.shown ? 'still shown from the stored SVG' : 'not shown'} – used by: ${problem.usedBy.join(', ')}`;
+  const describeItem = (item: IconCheckItem): IconCheckSegment[] => [
+    { path: item.path },
+    ...(item.icon ? [` (${item.icon})`] : []),
+    ...(item.detail ? [` – ${item.detail}`] : []),
+  ];
+  const describeProblem = (problem: IconProblem): IconCheckSegment[] => {
+    const usages: IconCheckSegment[] = [
+      ...problem.paths.map((path) => ({ path })),
+      ...problem.rules.map((rule) => `custom rule ${rule}`),
+    ];
+    return [
+      `${problem.icon} – ${problem.shown ? 'still shown from the stored SVG' : 'not shown'} – used by: `,
+      ...usages.flatMap((usage, index) =>
+        index > 0 ? [', ', usage] : [usage],
+      ),
+    ];
+  };
 
   return [
     {
@@ -386,7 +407,7 @@ export const getReportSections = (
     },
     {
       title: 'Skipped: notes Obsidian has not indexed yet',
-      items: report.notIndexed,
+      items: report.notIndexed.map((path) => [{ path }]),
     },
     {
       title: 'Errors',

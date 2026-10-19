@@ -371,7 +371,10 @@ describe('checkIcons', () => {
             'Ship.md': 'RiSpaceShipFill',
             'Smile.md': '😀',
           },
-          rules: [{ rule: 'Draft', icon: 'IbTrayStacked' }],
+          rules: [
+            { rule: 'Draft', icon: 'IbTrayStacked' },
+            { rule: 'Fun', icon: '😀' },
+          ],
           getIconAvailability: (iconName) =>
             iconName.startsWith('Ib')
               ? 'missing-pack'
@@ -385,13 +388,19 @@ describe('checkIcons', () => {
       expect(result.report.missingIconPacks).toEqual([
         {
           icon: 'IbTrayStacked',
-          usedBy: ['GM', 'Archive', 'Custom rule: Draft'],
+          paths: ['GM', 'Archive'],
+          rules: ['Draft'],
           shown: true,
         },
-        { icon: 'IbPhotoAndVideo', usedBy: ['Z_attachments'], shown: false },
+        {
+          icon: 'IbPhotoAndVideo',
+          paths: ['Z_attachments'],
+          rules: [],
+          shown: false,
+        },
       ]);
       expect(result.report.missingIcons).toEqual([
-        { icon: 'RiUnknown', usedBy: ['NPC.md'], shown: false },
+        { icon: 'RiUnknown', paths: ['NPC.md'], rules: [], shown: false },
       ]);
       expect(result.hasChanges).toBe(false);
     });
@@ -505,47 +514,73 @@ describe('getReportSections', () => {
       removedInvalid: [{ path: 'Empty' }],
       invalidFrontmatter: [{ path: 'Bad.md', detail: '`icon` is not text' }],
       missingIconPacks: [
-        { icon: 'IbTrayStacked', usedBy: ['GM', 'Archive'], shown: true },
+        {
+          icon: 'IbTrayStacked',
+          paths: ['GM', 'Archive'],
+          rules: ['Draft'],
+          shown: true,
+        },
       ],
-      missingIcons: [{ icon: 'RiUnknown', usedBy: ['NPC.md'], shown: false }],
+      missingIcons: [
+        { icon: 'RiUnknown', paths: ['NPC.md'], rules: [], shown: false },
+      ],
       notIndexed: ['New.md'],
       errors: [{ path: 'Broken.md', detail: 'Error: broken' }],
     });
 
     expect(sections).toEqual([
-      { title: 'Added from the frontmatter', items: ['NPC.md (RiUserFill)'] },
+      {
+        title: 'Added from the frontmatter',
+        items: [[{ path: 'NPC.md' }, ' (RiUserFill)']],
+      },
       {
         title: 'Updated from the frontmatter',
-        items: ['Ship.md (RiSpaceShipFill) – icon LiShip → RiSpaceShipFill'],
+        items: [
+          [
+            { path: 'Ship.md' },
+            ' (RiSpaceShipFill)',
+            ' – icon LiShip → RiSpaceShipFill',
+          ],
+        ],
       },
       {
         title: 'Removed: notes without an icon in the frontmatter',
-        items: ['Old.md (LiFile)'],
+        items: [[{ path: 'Old.md' }, ' (LiFile)']],
       },
       {
         title: 'Removed: files and folders that no longer exist',
-        items: ['Moved (LiFolder)'],
+        items: [[{ path: 'Moved' }, ' (LiFolder)']],
       },
-      { title: 'Removed: invalid entries', items: ['Empty'] },
+      { title: 'Removed: invalid entries', items: [[{ path: 'Empty' }]] },
       {
         title: 'Not changed: invalid frontmatter',
-        items: ['Bad.md – `icon` is not text'],
+        items: [[{ path: 'Bad.md' }, ' – `icon` is not text']],
       },
       {
         title: 'Icon pack not installed',
         items: [
-          'IbTrayStacked – still shown from the stored SVG – used by: GM, Archive',
+          [
+            'IbTrayStacked – still shown from the stored SVG – used by: ',
+            { path: 'GM' },
+            ', ',
+            { path: 'Archive' },
+            ', ',
+            'custom rule Draft',
+          ],
         ],
       },
       {
         title: 'Icon not found in its icon pack',
-        items: ['RiUnknown – not shown – used by: NPC.md'],
+        items: [['RiUnknown – not shown – used by: ', { path: 'NPC.md' }]],
       },
       {
         title: 'Skipped: notes Obsidian has not indexed yet',
-        items: ['New.md'],
+        items: [[{ path: 'New.md' }]],
       },
-      { title: 'Errors', items: ['Broken.md – Error: broken'] },
+      {
+        title: 'Errors',
+        items: [[{ path: 'Broken.md' }, ' – Error: broken']],
+      },
     ]);
   });
 });
