@@ -71,7 +71,7 @@ declare module 'obsidian' {
     plugins: {
       enabledPlugins: Set<string>;
       plugins: {
-        ['obsidian-icon-folder']?: {
+        ['obsidian-icon26-folder']?: {
           api: IconizeAPI;
         };
       };

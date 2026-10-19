@@ -52,6 +52,7 @@ import {
 } from './lib/util/folder-note';
 import { diffIconData, mergePathEntriesFromDisk } from './lib/data-merge';
 import { addStoredIcons, collectIconSvgs } from './lib/icon-svg-store';
+import { getOriginalPluginWarnings } from './lib/original-plugin';
 import {
   processIconInTextMarkdown,
   processIconInLinkMarkdown,
@@ -153,6 +154,16 @@ export default class IconizePlugin extends Plugin {
     }
 
     this.app.workspace.onLayoutReady(() => this.handleChangeLayout());
+    this.app.workspace.onLayoutReady(() => {
+      getOriginalPluginWarnings(
+        this.app.plugins.enabledPlugins,
+        this.getSettings().iconPacksPath,
+        this.app.vault.configDir,
+      ).forEach((warning) => {
+        logger.warn(warning);
+        new Notice(`[${config.PLUGIN_NAME}] ${warning}`, 0);
+      });
+    });
 
     this.addCommand({
       id: 'iconize:set-icon-for-file',
@@ -875,7 +886,7 @@ export default class IconizePlugin extends Plugin {
   }
 
   onunload() {
-    console.log('unloading obsidian-icon-folder');
+    console.log(`unloading ${config.PLUGIN_NAME}`);
   }
 
   async renameFolder(newPath: string, oldPath: string): Promise<void> {

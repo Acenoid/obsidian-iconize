@@ -1,4 +1,4 @@
-const PLUGIN_NAME = 'iconize';
+const PLUGIN_NAME = 'iconize26';
 
 const TITLE_ICON_CLASS = 'iconize-title-icon';
 
