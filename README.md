@@ -26,14 +26,14 @@
 
 ![Preview Image](./docs/preview-image.png)
 
-Project Deprecation and End of Maintenance: [read more](https://github.com/FlorianWoelki/obsidian-iconize/discussions/646)
+The original Iconize reached its end of maintenance: [read more](https://github.com/FlorianWoelki/obsidian-iconize/discussions/646)
 
 ## What is it?
 
 This obsidian plugin allows you to add **any** custom icon (of type `.svg`) or from an icon pack to anything you want.
 
-Refer to the official documentation for more information:
-[https://florianwoelki.github.io/obsidian-iconize/](https://florianwoelki.github.io/obsidian-iconize/) about the plugin and its functionalities.
+The documentation of the original plugin also applies to Iconize26:
+[https://florianwoelki.github.io/obsidian-iconize/](https://florianwoelki.github.io/obsidian-iconize/). Where it mentions the plugin folder `obsidian-icon-folder`, Iconize26 uses `obsidian-icon26-folder`.
 
 ## Key Highlights
 
@@ -49,28 +49,27 @@ Refer to the official documentation for more information:
 
 ## Development
 
-To customize this project for your needs, you can clone it and then install all dependencies:
+To work on this fork, clone it and install all dependencies with pnpm 12. Older versions such as pnpm 9 cannot read `pnpm-workspace.yaml`.
+
 ```sh
-$ git clone https://github.com/FlorianWoelki/obsidian-iconize
-$ cd obsidian-iconize
-$ pnpm i
+git clone https://github.com/Acenoid/obsidian-iconize
+cd obsidian-iconize
+npx pnpm@12 install
 ```
 
-After the installation, you need to create a `env.js` file in the root directory. Fill the file with the following content:
+Then create an `env.js` file in the root directory with the folder the plugin files are copied to:
 
 ```js
 export const obsidianExportPath =
-  '<path-to-obsidian-vault>/.obsidian/plugins/obsidian-iconize/';
+  '<path-to-obsidian-vault>/.obsidian/plugins/obsidian-icon26-folder/';
 ```
 
-Make sure you create the directory specified in that variable if it does not exist yet.
-
-Afterwards, you can start the rollup dev server by using:
+Make sure the folder exists. Then start the rollup dev server:
 
 ```sh
-$ pnpm dev
+npx pnpm@12 dev
 ```
 
-This command will automatically build the neccesary files for testing and developing on every change. Furthermore, it does copy all the necessary files to the plugin directory you specified.
+It builds the plugin on every change and copies the files into that folder. Reload the plugin in Obsidian to see the changes.
 
-Finally, you can customize the plugin and add it to your plugins.
+`npx pnpm@12 test` runs the unit tests, `npx pnpm@12 build` creates a production build without a source map.
