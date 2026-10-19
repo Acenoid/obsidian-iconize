@@ -2,8 +2,8 @@ import { Setting, TextComponent } from 'obsidian';
 import IconFolderSetting from './iconFolderSetting';
 import { Notice } from 'obsidian';
 import config from '@app/config';
-import { isHexadecimal, stringToHex } from '@app/util';
 import { logger } from '@app/lib/logger';
+import IconCheckModal from '@app/ui/icon-check-modal';
 
 export default class FrontmatterOptions extends IconFolderSetting {
   private iconFieldNameTextComp: TextComponent;
@@ -78,71 +78,30 @@ export default class FrontmatterOptions extends IconFolderSetting {
       });
 
     new Setting(this.containerEl)
-      .setName('Refresh icons from frontmatter')
+      .setName('Check and repair icons')
       .setDesc(
-        'Sets the icon and color for each note in the vault based on the frontmatter properties. WARNING: This will change any manually set icons to the one defined in the frontmatter. IF A NOTE HAS NO FRONTMATTER, THE CURRENT ICON WILL BE REMOVED. Please restart Obsidian after this completes to see the changes.',
+        'Takes over the icon and color from the frontmatter of each note and removes the icons of notes without an icon in the frontmatter. Also removes icons of files and folders that no longer exist and reports missing icon packs and icons. Before changing data.json, a copy is saved as data.json.bak.',
       )
       .addButton((btn) => {
-        btn.setButtonText('Refresh').onClick(async () => {
-          if (!this.plugin.getSettings().iconInFrontmatterEnabled) {
+        btn.setButtonText('Check').onClick(async () => {
+          btn.setDisabled(true);
+          btn.setButtonText(
+            this.plugin.getIconPackManager().hasLoadedAll()
+              ? 'Checking...'
+              : 'Waiting for icon packs...',
+          );
+          try {
+            const report = await this.plugin.checkAndRepairIcons();
+            new IconCheckModal(this.plugin.app, report).open();
+          } catch (e) {
+            logger.error(`Checking the icons failed: ${e}`);
             new Notice(
-              `[${config.PLUGIN_NAME}] Please enable "Use icon in frontmatter".`,
+              `[${config.PLUGIN_NAME}] Checking the icons failed: ${e}`,
             );
-            return;
+          } finally {
+            btn.setDisabled(false);
+            btn.setButtonText('Check');
           }
-
-          new Notice(
-            `[${config.PLUGIN_NAME}] Refreshing icons from frontmatter, please wait...`,
-          );
-
-          const files = this.plugin.app.vault.getMarkdownFiles();
-
-          for (const file of files) {
-            const fileCache = this.plugin.app.metadataCache.getFileCache(file);
-
-            const frontmatterIconKey =
-              this.plugin.getSettings().iconInFrontmatterFieldName;
-            const frontmatterIconColorKey =
-              this.plugin.getSettings().iconColorInFrontmatterFieldName;
-
-            const iconName = fileCache.frontmatter?.[frontmatterIconKey];
-            let iconColor = fileCache.frontmatter?.[frontmatterIconColorKey];
-
-            if (!iconName) {
-              await this.plugin.removeFolderIcon(file.path);
-              continue;
-            }
-
-            if (typeof iconName !== 'string') {
-              const message = `${file.path}\nFrontmatter property type \`${frontmatterIconKey}\` has to be of type \`text\`.`;
-              logger.warn(message);
-              new Notice(`[${config.PLUGIN_NAME}]\n${message}`);
-              continue;
-            }
-
-            this.plugin.addFolderIcon(file.path, iconName);
-
-            if (!iconColor) {
-              await this.plugin.removeIconColor(file.path);
-              continue;
-            }
-
-            if (typeof iconColor !== 'string') {
-              const message = `${file.path}\nFrontmatter property type \`${frontmatterIconColorKey}\` has to be of type \`text\`.`;
-              logger.warn(message);
-              new Notice(`[${config.PLUGIN_NAME}]\n${message}`);
-              continue;
-            }
-
-            iconColor = isHexadecimal(iconColor)
-              ? stringToHex(iconColor)
-              : iconColor;
-
-            this.plugin.addIconColor(file.path, iconColor);
-          }
-          new Notice(
-            `[${config.PLUGIN_NAME}] Refreshed icons from frontmatter. Please restart Obsidian to see the changes.`,
-          );
         });
       });
   }

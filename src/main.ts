@@ -58,6 +58,12 @@ import { diffIconData, mergePathEntriesFromDisk } from './lib/data-merge';
 import { addStoredIcons, collectIconSvgs } from './lib/icon-svg-store';
 import { getOriginalPluginWarnings } from './lib/original-plugin';
 import {
+  IconAvailability,
+  IconCheckReport,
+  IconCheckResult,
+  checkIcons,
+} from './lib/icon-check';
+import {
   processIconInTextMarkdown,
   processIconInLinkMarkdown,
 } from './editor/markdown-processors';
@@ -94,6 +100,12 @@ export default class IconizePlugin extends Plugin {
   private eventEmitter = new EventEmitter();
 
   private iconPackManager: IconPackManager;
+
+  private resolveIconPacksLoaded: () => void;
+  /** Resolves when the icon packs were read in the background, also on errors. */
+  private iconPacksLoaded = new Promise<void>((resolve) => {
+    this.resolveIconPacksLoaded = resolve;
+  });
 
   public api: IconizeAPI;
 
@@ -480,31 +492,218 @@ export default class IconizePlugin extends Plugin {
    * that were missing at startup and redraws the icons in open notes.
    */
   private async loadIconPacksInBackground(): Promise<void> {
-    await this.iconPackManager.loadAll();
-    await this.addIconsMissingAtStartup();
+    try {
+      await this.iconPackManager.loadAll();
+      await this.addIconsMissingAtStartup();
 
-    const storedIconSvgs = this.getSettings().iconSvgs;
-    if (
-      JSON.stringify(collectIconSvgs(this, storedIconSvgs)) !==
-      JSON.stringify(storedIconSvgs)
-    ) {
-      await this.saveIconFolderData();
+      const storedIconSvgs = this.getSettings().iconSvgs;
+      if (
+        JSON.stringify(collectIconSvgs(this, storedIconSvgs)) !==
+        JSON.stringify(storedIconSvgs)
+      ) {
+        await this.saveIconFolderData();
+      }
+
+      this.redrawIconsInOpenNotes();
+
+      // Checks the vault for missing icons and adds them.
+      if (this.getSettings().iconsBackgroundCheckEnabled) {
+        const data = Object.entries(this.data) as [
+          string,
+          string | FolderIconObject,
+        ][];
+        await icon.checkMissingIcons(this, data);
+        // TODO: Check if needed
+        // resetPreloadedIcons();
+      }
+
+      this.eventEmitter.emit('allIconsLoaded');
+    } finally {
+      this.resolveIconPacksLoaded();
+    }
+  }
+
+  /**
+   * Checks the icons of all notes against their frontmatter and the entries of
+   * `data.json` against the vault, repairs `data.json` and redraws the changed
+   * icons. Waits until the icon packs are read. Before `data.json` is written,
+   * it is copied to `data.json.bak`. See {@link checkIcons}.
+   */
+  public async checkAndRepairIcons(): Promise<IconCheckReport> {
+    await this.iconPacksLoaded;
+
+    const settings = this.getSettings();
+    let result: IconCheckResult;
+    await this.mutateData(
+      () => {
+        result = checkIcons({
+          data: this.data,
+          notes: settings.iconInFrontmatterEnabled
+            ? this.app.vault.getMarkdownFiles().map((file) => {
+                // The cache is `null` for notes that are not indexed yet.
+                const fileCache = this.app.metadataCache.getFileCache(file);
+                return {
+                  path: file.path,
+                  frontmatter: fileCache ? fileCache.frontmatter : null,
+                };
+              })
+            : undefined,
+          iconFieldName: settings.iconInFrontmatterFieldName,
+          iconColorFieldName: settings.iconColorInFrontmatterFieldName,
+          pathExists: (path) =>
+            this.app.vault.getAbstractFileByPath(path) !== null,
+          getIconAvailability: (iconName) => this.getIconAvailability(iconName),
+          isIconShown: (iconName) => {
+            const identifier = nextIdentifier(iconName);
+            return !!getSvgFromLoadedIcon(
+              this,
+              iconName.substring(0, identifier),
+              iconName.substring(identifier),
+            );
+          },
+          rules: settings.rules,
+          warnings: getOriginalPluginWarnings(
+            this.app.plugins.enabledPlugins,
+            settings.iconPacksPath,
+            this.app.vault.configDir,
+          ),
+        });
+        if (!result.hasChanges) {
+          return false;
+        }
+
+        this.data = result.data as typeof this.data;
+      },
+      () => this.backUpData(),
+    );
+
+    if (result.hasChanges) {
+      await this.redrawCheckedIcons(result);
     }
 
-    this.redrawIconsInOpenNotes();
+    return result.report;
+  }
 
-    // Checks the vault for missing icons and adds them.
-    if (this.getSettings().iconsBackgroundCheckEnabled) {
-      const data = Object.entries(this.data) as [
-        string,
-        string | FolderIconObject,
-      ][];
-      await icon.checkMissingIcons(this, data);
-      // TODO: Check if needed
-      // resetPreloadedIcons();
+  /**
+   * Returns whether the icon is in its icon pack. Native Lucide icons count as
+   * available when Lucide is set to native.
+   */
+  private getIconAvailability(iconName: string): IconAvailability {
+    const identifier = nextIdentifier(iconName);
+    const iconPack = this.iconPackManager.getIconPackByPrefix(
+      iconName.substring(0, identifier),
+    );
+    if (!iconPack) {
+      return 'missing-pack';
     }
 
-    this.eventEmitter.emit('allIconsLoaded');
+    const name = iconName.substring(identifier).toLowerCase();
+    return iconPack
+      .getIcons()
+      .some((icon) => getNormalizedName(icon.name).toLowerCase() === name)
+      ? 'available'
+      : 'missing-icon';
+  }
+
+  /** Copies `data.json` to `data.json.bak` in the plugin folder. */
+  private async backUpData(): Promise<void> {
+    const dataPath = normalizePath(`${this.manifest.dir}/data.json`);
+    const adapter = this.app.vault.adapter;
+    if (await adapter.exists(dataPath)) {
+      await adapter.write(`${dataPath}.bak`, await adapter.read(dataPath));
+    }
+  }
+
+  /**
+   * Redraws the icons that the icon check added, changed or removed in the file
+   * explorer, in folder notes, in tabs and above titles.
+   */
+  private async redrawCheckedIcons(result: IconCheckResult): Promise<void> {
+    for (const { path, icon: iconName } of result.removedEntries) {
+      IconCache.getInstance().invalidate(path);
+      this.frontmatterCache.delete(path);
+
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (file) {
+        dom.removeIconInPath(path);
+        syncFolderNoteIcon(this, path, undefined);
+        for (const rule of customRule.getSortedRules(this)) {
+          if (await customRule.isApplicable(this, rule, path)) {
+            customRule.add(this, rule, file);
+            break;
+          }
+        }
+      }
+
+      if (iconName && !emoji.isEmoji(iconName)) {
+        removeIconFromIconPack(this, iconName);
+      }
+    }
+
+    for (const path of result.changedPaths) {
+      const iconName = this.getIconNameFromPath(path);
+      const iconColor = this.getIconColor(path);
+      this.frontmatterCache.add(path);
+      const attached = dom.createIconNode(this, path, iconName, {
+        color: iconColor,
+      });
+      if (attached) {
+        IconCache.getInstance().set(path, {
+          iconNameWithPrefix: iconName,
+          iconColor,
+        });
+      } else {
+        IconCache.getInstance().invalidate(path);
+      }
+      syncFolderNoteIcon(this, path, iconName, iconColor);
+
+      try {
+        if (!emoji.isEmoji(iconName)) {
+          saveIconToIconPack(this, iconName);
+        }
+      } catch (e) {
+        logger.warn(`Could not save icon ${iconName} to its icon pack (${e})`);
+      }
+    }
+
+    const paths = new Set([
+      ...result.changedPaths,
+      ...result.removedEntries.map(({ path }) => path),
+    ]);
+    for (const openedFile of getAllOpenedFiles(this)) {
+      if (!paths.has(openedFile.path)) {
+        continue;
+      }
+
+      const iconName = icon.getByPath(this, openedFile.path);
+      if (this.getSettings().iconInTabsEnabled) {
+        const leaf = openedFile.leaf as TabHeaderLeaf;
+        if (iconName) {
+          iconTabs.add(this, openedFile.path, leaf.tabHeaderInnerIconEl, {
+            iconColor: this.getIconColor(openedFile.path),
+          });
+        } else {
+          iconTabs.remove(leaf.tabHeaderInnerIconEl, {
+            replaceWithDefaultIcon: true,
+          });
+        }
+      }
+
+      const view = openedFile.leaf.view as InlineTitleView;
+      if (this.getSettings().iconInTitleEnabled && view.inlineTitleEl) {
+        const titleSvg =
+          iconName && emoji.isEmoji(iconName)
+            ? iconName
+            : iconName && icon.getIconByName(this, iconName)?.svgElement;
+        if (titleSvg) {
+          titleIcon.add(this, view.inlineTitleEl, titleSvg, {
+            fontSize: calculateInlineTitleSize(),
+          });
+        } else {
+          titleIcon.hide(view.inlineTitleEl);
+        }
+      }
+    }
   }
 
   /**
@@ -1117,15 +1316,22 @@ export default class IconizePlugin extends Plugin {
    * Obsidian Sync wrote to disk from another device while this instance was
    * running. See {@link mergePathEntriesFromDisk}.
    */
-  private mutateData(mutate: () => void): Promise<void> {
+  private mutateData(
+    mutate: () => void | false,
+    beforeSave?: () => Promise<void>,
+  ): Promise<void> {
     const run = async () => {
       const onDisk = await this.loadData();
       this.data = mergePathEntriesFromDisk(this.data, onDisk);
-      mutate();
+      // `false` means that nothing changed and the file is not written.
+      if (mutate() === false) {
+        return;
+      }
       this.getSettings().iconSvgs = collectIconSvgs(this, {
         ...onDisk?.settings?.iconSvgs,
         ...this.getSettings().iconSvgs,
       });
+      await beforeSave?.();
       await this.saveData(this.data);
     };
     this.persistChain = this.persistChain.then(run, run);
