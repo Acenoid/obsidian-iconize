@@ -76,11 +76,21 @@ export class IconPackManager {
     for (let i = 0; i < loadedIconPacks.files.length; i++) {
       const fileName = loadedIconPacks.files[i];
       if (fileName.endsWith('.zip')) {
+        const iconPackName = fileName.split('/').pop().split('.zip')[0];
+        // A downloaded Lucide zip file is only used by the custom Lucide icon pack, so
+        // it is not read otherwise. The empty entry still keeps its directory from
+        // being loaded as a custom icon pack.
+        if (
+          iconPackName === LUCIDE_ICON_PACK_NAME &&
+          !this.plugin.doesUseCustomLucideIconPack()
+        ) {
+          zipFiles[iconPackName] = [];
+          continue;
+        }
+
         const arrayBuffer =
           await this.plugin.app.vault.adapter.readBinary(fileName);
-        const files = await readZipFile(arrayBuffer);
-        const iconPackName = fileName.split('/').pop().split('.zip')[0];
-        zipFiles[iconPackName] = files;
+        zipFiles[iconPackName] = await readZipFile(arrayBuffer);
       }
     }
 
@@ -122,6 +132,13 @@ export class IconPackManager {
 
     // Extract all files from the zip files.
     for (const zipFile in zipFiles) {
+      if (
+        zipFile === LUCIDE_ICON_PACK_NAME &&
+        !this.plugin.doesUseCustomLucideIconPack()
+      ) {
+        continue;
+      }
+
       const files = zipFiles[zipFile];
       const existingIconPack = this.getIconPackByName(zipFile);
       const iconPack =
@@ -130,12 +147,6 @@ export class IconPackManager {
         iconPack,
         files,
       );
-      if (
-        zipFile === LUCIDE_ICON_PACK_NAME &&
-        !this.plugin.doesUseCustomLucideIconPack()
-      ) {
-        continue;
-      }
 
       iconPack.setIcons(loadedIcons);
       if (!existingIconPack) {

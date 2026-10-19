@@ -490,9 +490,9 @@ export default class IconizePlugin extends Plugin {
     });
 
     icon.addAll(this, data, this.registeredFileExplorers, () => {
-      // After initialization of the icon packs, checks the vault for missing icons and
-      // adds them.
-      this.iconPackManager.loadAll().then(async () => {
+      // The icon packs are already loaded in `onload`, so this only checks the vault for
+      // missing icons and adds them.
+      const checkMissingIcons = async (): Promise<void> => {
         if (this.getSettings().iconsBackgroundCheckEnabled) {
           const data = Object.entries(this.data) as [
             string,
@@ -504,7 +504,8 @@ export default class IconizePlugin extends Plugin {
         }
 
         this.eventEmitter.emit('allIconsLoaded');
-      });
+      };
+      checkMissingIcons();
 
       if (this.getSettings().iconInFrontmatterEnabled) {
         const activeFile = this.app.workspace.getActiveFile();

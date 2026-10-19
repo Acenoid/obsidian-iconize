@@ -102,35 +102,35 @@ export default class OutlineInternalPlugin extends InternalPluginInjector {
       }
     };
 
+    // The icon packs are loaded before the layout is ready, so the icons can be set
+    // without waiting for the `allIconsLoaded` event.
     const setOutlineIcons = () => {
-      this.plugin.getEventEmitter().once('allIconsLoaded', () => {
-        updateTreeItems();
+      updateTreeItems();
 
-        const callback = (mutations: MutationRecord[]) => {
-          mutations.forEach((mutation) => {
-            if (mutation.type !== 'childList') {
-              return;
-            }
-
-            const addedNodes = mutation.addedNodes;
-            if (addedNodes.length === 0) {
-              return;
-            }
-
-            updateTreeItems();
-          });
-
-          if (!this.enabled) {
-            observer.disconnect();
+      const callback = (mutations: MutationRecord[]) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type !== 'childList') {
+            return;
           }
-        };
 
-        const observer = new MutationObserver(callback);
+          const addedNodes = mutation.addedNodes;
+          if (addedNodes.length === 0) {
+            return;
+          }
 
-        observer.observe(this.leaf.view.tree.containerEl, {
-          childList: true,
-          subtree: true,
+          updateTreeItems();
         });
+
+        if (!this.enabled) {
+          observer.disconnect();
+        }
+      };
+
+      const observer = new MutationObserver(callback);
+
+      observer.observe(this.leaf.view.tree.containerEl, {
+        childList: true,
+        subtree: true,
       });
     };
 

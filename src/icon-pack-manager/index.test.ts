@@ -100,6 +100,31 @@ describe('IconPackManager.loadAll', () => {
       'FarAddressCard',
     );
   });
+
+  it('should not read a downloaded Lucide zip file when the native Lucide icon pack is used', async () => {
+    const plugin = makePlugin({
+      list: vi.fn((path: string) => {
+        if (path === ICONS_PATH) {
+          return Promise.resolve({
+            files: [`${ICONS_PATH}/lucide-icons.zip`],
+            folders: [`${ICONS_PATH}/lucide-icons`],
+          });
+        }
+        return Promise.resolve({
+          files: [`${ICONS_PATH}/lucide-icons/Wrench.svg`],
+          folders: [],
+        });
+      }),
+    });
+    vi.mocked(plugin.doesUseNativeLucideIconPack).mockReturnValue(true);
+
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    await manager.loadAll();
+
+    expect(plugin.app.vault.adapter.readBinary).not.toHaveBeenCalled();
+    expect(plugin.app.vault.adapter.read).not.toHaveBeenCalled();
+    expect(manager.getIconPacks()).toHaveLength(0);
+  });
 });
 
 describe('IconPackManager.init', () => {
