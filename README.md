@@ -1,15 +1,22 @@
-# Obsidian Iconize
+# Iconize26
 
 > [!NOTE]
-> **This is a fork** of [FlorianWoelki/obsidian-iconize](https://github.com/FlorianWoelki/obsidian-iconize), which is no longer maintained.
+> **Iconize26 is a fork** of [FlorianWoelki/obsidian-iconize](https://github.com/FlorianWoelki/obsidian-iconize), which is no longer maintained.
 > It is based on the unreleased upstream `main` branch and includes:
 >
 > - All unreleased upstream changes, e.g. the reworked icon pack manager and the fix for certain characters like `©` freezing Obsidian ([#647](https://github.com/FlorianWoelki/obsidian-iconize/pull/647)).
 > - The fixes and features of [LandonSchropp/obsidian-iconize](https://github.com/LandonSchropp/obsidian-iconize), mainly for vaults that are synced across devices: a running instance no longer overwrites a newer synced `data.json`, icons reload when `data.json` changes on disk, and a folder note's icon can be used as its folder's icon. Its author marks that fork as written by AI agents without reading the code.
 > - Icons in notes are also rendered in content that other plugins render asynchronously, e.g. the options of a [Meta Bind](https://github.com/mProjectsCode/obsidian-meta-bind-plugin) select input field (Meta Bind >= 1.3.2, see [meta-bind#504](https://github.com/mProjectsCode/obsidian-meta-bind-plugin/issues/504)).
 >
-> The plugin id stays `obsidian-icon-folder`, so existing settings and icon packs are kept.
-> Install it with [BRAT](https://github.com/TfTHacker/obsidian42-brat) (`Acenoid/obsidian-iconize`) or copy `main.js`, `manifest.json` and `styles.css` of a release into `.obsidian/plugins/obsidian-icon-folder/`.
+> It uses its own plugin id `obsidian-icon26-folder`, so Obsidian never replaces it with an official Iconize update.
+> Install it with [BRAT](https://github.com/TfTHacker/obsidian42-brat) (`Acenoid/obsidian-iconize`) or copy `main.js`, `manifest.json` and `styles.css` of a release into `.obsidian/plugins/obsidian-icon26-folder/`.
+>
+> **Switching from Iconize:** never enable both plugins at the same time, otherwise every icon is shown twice.
+>
+> 1. Disable Iconize under Settings → Community plugins.
+> 2. Copy `data.json` from `.obsidian/plugins/obsidian-icon-folder/` into `.obsidian/plugins/obsidian-icon26-folder/`.
+> 3. If `iconPacksPath` in the copied `data.json` points into the old plugin folder (e.g. `.obsidian/plugins/obsidian-icon-folder/icons`), also copy that folder into the new plugin folder and change `iconPacksPath` accordingly (e.g. `.obsidian/plugins/obsidian-icon26-folder/icons`). With the default `.obsidian/icons` nothing needs to be done.
+> 4. Reload the list of community plugins and enable Iconize26. Custom hotkeys for Iconize commands need to be set again.
 
 ![Preview Image](./docs/preview-image.png)
 
