@@ -1,11 +1,17 @@
 # Iconize26
 
+> [!IMPORTANT]
+> **Made with AI tools.** All changes on top of the upstream `main` branch were made with AI tools:
+>
+> - The changes from [LandonSchropp/obsidian-iconize](https://github.com/LandonSchropp/obsidian-iconize) were written by AI agents. According to its author, the code was not read.
+> - This fork's own changes were made with the help of [Claude Code](https://claude.com/claude-code).
+
 > [!NOTE]
 > **Iconize26 is a fork** of [FlorianWoelki/obsidian-iconize](https://github.com/FlorianWoelki/obsidian-iconize), which is no longer maintained.
 > It is based on the unreleased upstream `main` branch and includes:
 >
 > - All unreleased upstream changes, e.g. the reworked icon pack manager and the fix for certain characters like `©` freezing Obsidian ([#647](https://github.com/FlorianWoelki/obsidian-iconize/pull/647)).
-> - The fixes and features of [LandonSchropp/obsidian-iconize](https://github.com/LandonSchropp/obsidian-iconize), mainly for vaults that are synced across devices: a running instance no longer overwrites a newer synced `data.json`, icons reload when `data.json` changes on disk, and a folder note's icon can be used as its folder's icon. Its author marks that fork as written by AI agents without reading the code.
+> - The fixes and features of [LandonSchropp/obsidian-iconize](https://github.com/LandonSchropp/obsidian-iconize), mainly for vaults that are synced across devices: a running instance no longer overwrites a newer synced `data.json`, icons reload when `data.json` changes on disk, and a folder note's icon can be used as its folder's icon.
 > - Icons in notes are also rendered in content that other plugins render asynchronously, e.g. the options of a [Meta Bind](https://github.com/mProjectsCode/obsidian-meta-bind-plugin) select input field (Meta Bind >= 1.3.2, see [meta-bind#504](https://github.com/mProjectsCode/obsidian-meta-bind-plugin/issues/504)).
 >
 > It uses its own plugin id `obsidian-icon26-folder`, so Obsidian never replaces it with an official Iconize update.
