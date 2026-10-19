@@ -3,7 +3,7 @@
   "name": "Iconize26",
   "version": "2.15.0",
   "minAppVersion": "0.9.12",
-  "description": "Fork of Iconize: add icons to anything you desire in Obsidian, including files, folders, and text. Also renders icons in content that other plugins like Meta Bind render later, and keeps icons in sync across devices.",
+  "description": "Fork of Iconize: add icons to anything you desire in Obsidian, including files, folders, and text.",
   "author": "Florian Woelki",
   "authorUrl": "https://florianwoelki.com/",
   "isDesktopOnly": false
