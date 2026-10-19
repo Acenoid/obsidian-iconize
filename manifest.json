@@ -4,7 +4,7 @@
   "version": "2.15.0",
   "minAppVersion": "0.9.12",
   "description": "Fork of Iconize: add icons to anything you desire in Obsidian, including files, folders, and text.",
-  "author": "Florian Woelki",
-  "authorUrl": "https://florianwoelki.com/",
+  "author": "Acenoid",
+  "authorUrl": "https://github.com/Acenoid",
   "isDesktopOnly": false
 }
