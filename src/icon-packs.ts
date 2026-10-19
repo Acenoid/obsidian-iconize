@@ -118,4 +118,31 @@ export const getExtraPath = (iconPackName: string): string | undefined => {
   return path?.length === 0 ? undefined : path;
 };
 
+/**
+ * Checks if a file inside a downloaded zip file is located in the extra path of the
+ * icon pack. The first directory of the extra path usually contains the version of the
+ * icon pack (e.g. `fontawesome-free-7.2.0-web/`). Zip files downloaded with an older
+ * version of the plugin have a different version there, so this directory is ignored
+ * when the full path does not match.
+ * @param fileName String of the file path inside the zip file.
+ * @param extraPath String of the extra path of the icon pack.
+ * @returns Boolean whether the file is located in the extra path.
+ */
+export const isInExtraPath = (fileName: string, extraPath: string): boolean => {
+  if (fileName.startsWith(extraPath)) {
+    return true;
+  }
+
+  const extraPathWithoutRoot = extraPath.split('/').slice(1).join('/');
+  if (extraPathWithoutRoot.length === 0) {
+    return false;
+  }
+
+  return fileName
+    .split('/')
+    .slice(1)
+    .join('/')
+    .startsWith(extraPathWithoutRoot);
+};
+
 export default predefinedIconPacks;

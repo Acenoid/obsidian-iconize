@@ -4,7 +4,7 @@ import IconizePlugin from '@app/main';
 import { Notice } from 'obsidian';
 import { generateIcon, getNormalizedName } from './util';
 import JSZip from 'jszip';
-import { getExtraPath } from '@app/icon-packs';
+import { getExtraPath, isInExtraPath } from '@app/icon-packs';
 import { getFileFromJSZipFile } from '@app/zip-util';
 import { IconPack } from './icon-pack';
 import { Icon } from '.';
@@ -111,9 +111,9 @@ export class FileManager {
     const extraPath = getExtraPath(iconPack.getName());
 
     for (let j = 0; j < files.length; j++) {
-      // Checks if the icon pack has an extra path. Also ignores files which do not start
-      // with the extra path.
-      if (extraPath && !files[j].name.startsWith(extraPath)) {
+      // Checks if the icon pack has an extra path. Also ignores files which are not
+      // located in the extra path.
+      if (extraPath && !isInExtraPath(files[j].name, extraPath)) {
         continue;
       }
 

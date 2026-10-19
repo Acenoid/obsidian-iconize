@@ -49,6 +49,11 @@ export class IconPackManager {
         let iconPack = new IconPack(this.plugin, iconPackName, false);
 
         if (iconPackName === LUCIDE_ICON_PACK_NAME) {
+          // A downloaded Lucide zip file is only used by the custom Lucide icon pack.
+          // The native icon pack is added below.
+          if (!this.plugin.doesUseCustomLucideIconPack()) {
+            continue;
+          }
           iconPack = this.lucideIconPack.init(iconPack);
         }
 
@@ -390,7 +395,7 @@ export class IconPackManager {
       (ip) => ip.getName() === iconPack.getName(),
     );
     if (iconPackIndex > -1) {
-      this.iconPacks.splice(iconPackIndex);
+      this.iconPacks.splice(iconPackIndex, 1);
     }
     await iconPack.delete();
   }
