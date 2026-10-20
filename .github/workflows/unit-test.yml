@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+    branches:
+      - main
 
 jobs:
   cache-and-install:
@@ -14,23 +16,28 @@ jobs:
       contents: read
       pull-requests: write
 
+    env:
+      # The git hooks are only needed for local commits.
+      HUSKY: 0
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
-          version: 8
+          # pnpm-workspace.yaml and the lockfile need pnpm 12.
+          version: 12
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Run unit tests
         run: pnpm test:coverage
