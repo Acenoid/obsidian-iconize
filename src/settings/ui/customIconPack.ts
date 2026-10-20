@@ -5,6 +5,11 @@ import { readFileSync } from '@app/util';
 import icon from '@app/lib/icon';
 import { LucideIconPackType } from '../data';
 import { LUCIDE_ICON_PACK_NAME } from '@app/icon-pack-manager/lucide';
+import { IconPackLoadState } from '@app/icon-pack-manager';
+import {
+  AllIconsLoadedEvent,
+  IconPackLoadedEvent,
+} from '@app/lib/event/events';
 
 export default class CustomIconPackSetting extends IconFolderSetting {
   private textComponent: TextComponent;
@@ -12,6 +17,8 @@ export default class CustomIconPackSetting extends IconFolderSetting {
   private closeTimer: NodeJS.Timeout;
   private dragTargetElement: HTMLElement;
   private refreshDisplay: () => void;
+  private onIconPackLoaded: (event: IconPackLoadedEvent) => void;
+  private onAllIconsLoaded: (event: AllIconsLoadedEvent) => void;
 
   constructor(
     plugin: IconizePlugin,
@@ -109,21 +116,36 @@ export default class CustomIconPackSetting extends IconFolderSetting {
       },
     );
 
+    // Updates the descriptions of the icon packs that are still read in the
+    // background, because the settings can be opened before.
+    const updatesOfLoadingIconPacks = new Map<string, () => void>();
+
     iconPacks.forEach((iconPack) => {
       const isLucideIconPack = iconPack.getName() === LUCIDE_ICON_PACK_NAME;
       const additionalLucideDescription =
         '(Native Pack has fewer icons but 100% Obsidian Sync support)';
-      // Icon packs from files are read in the background after startup.
-      const totalIcons =
-        this.plugin.getIconPackManager().hasLoadedAll() ||
-        (isLucideIconPack && this.plugin.doesUseNativeLucideIconPack())
-          ? iconPack.getIcons().length
-          : 'loading...';
+      const getLoadState = (): IconPackLoadState =>
+        isLucideIconPack && this.plugin.doesUseNativeLucideIconPack()
+          ? 'loaded'
+          : this.plugin
+              .getIconPackManager()
+              .getIconPackLoadState(iconPack.getName());
+      const getDescription = (): string => {
+        const loadState = getLoadState();
+        const description =
+          loadState === 'failed'
+            ? 'Could not be loaded.'
+            : `Total icons: ${loadState === 'loaded' ? iconPack.getIcons().length : 'loading...'}`;
+        return `${description}${isLucideIconPack ? ` ${additionalLucideDescription}` : ''}`;
+      };
       const iconPackSetting = new Setting(this.containerEl)
         .setName(`${iconPack.getName()} (${iconPack.getPrefix()})`)
-        .setDesc(
-          `Total icons: ${totalIcons}${isLucideIconPack ? ` ${additionalLucideDescription}` : ''}`,
+        .setDesc(getDescription());
+      if (getLoadState() === 'loading') {
+        updatesOfLoadingIconPacks.set(iconPack.getName(), () =>
+          iconPackSetting.setDesc(getDescription()),
         );
+      }
       // iconPackSetting.addButton((btn) => {
       //   btn.setIcon('broken-link');
       //   btn.setTooltip('Try to fix icon pack');
@@ -301,5 +323,37 @@ export default class CustomIconPackSetting extends IconFolderSetting {
         false,
       );
     });
+
+    this.listenForLoadedIconPacks(updatesOfLoadingIconPacks);
+  }
+
+  private listenForLoadedIconPacks(updates: Map<string, () => void>): void {
+    if (updates.size === 0) {
+      return;
+    }
+
+    this.onIconPackLoaded = (event) => {
+      updates.get(event.payload.iconPackName)?.();
+      updates.delete(event.payload.iconPackName);
+    };
+    // Updates the icon packs without their own event, for example an icon pack that
+    // was added while the icon packs were read.
+    this.onAllIconsLoaded = () => {
+      updates.forEach((update) => update());
+      this.hide();
+    };
+    const eventEmitter = this.plugin.getEventEmitter();
+    eventEmitter.on('iconPackLoaded', this.onIconPackLoaded);
+    eventEmitter.on('allIconsLoaded', this.onAllIconsLoaded);
+  }
+
+  /**
+   * Stops updating the descriptions of the icon packs. Called when the settings are
+   * closed or displayed again.
+   */
+  public hide(): void {
+    const eventEmitter = this.plugin.getEventEmitter();
+    eventEmitter.off('iconPackLoaded', this.onIconPackLoaded);
+    eventEmitter.off('allIconsLoaded', this.onAllIconsLoaded);
   }
 }

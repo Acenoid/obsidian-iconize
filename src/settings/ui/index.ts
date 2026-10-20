@@ -21,6 +21,7 @@ import UseInternalPlugins from './useInternalPlugins';
 
 export default class IconFolderSettings extends PluginSettingTab {
   private plugin: IconizePlugin;
+  private customIconPackSetting: CustomIconPackSetting;
 
   constructor(app: App, plugin: IconizePlugin) {
     super(app, plugin);
@@ -31,6 +32,7 @@ export default class IconFolderSettings extends PluginSettingTab {
   display(): void {
     const { plugin, containerEl, app } = this;
     containerEl.empty();
+    this.customIconPackSetting?.hide();
 
     containerEl.createEl('h1', { text: 'General' });
     new RecentlyUsedIconsSetting(plugin, containerEl).display();
@@ -64,8 +66,16 @@ export default class IconFolderSettings extends PluginSettingTab {
     new PredefinedIconPacksSetting(plugin, containerEl, app, () =>
       this.display(),
     ).display();
-    new CustomIconPackSetting(plugin, containerEl, () =>
-      this.display(),
-    ).display();
+    this.customIconPackSetting = new CustomIconPackSetting(
+      plugin,
+      containerEl,
+      () => this.display(),
+    );
+    this.customIconPackSetting.display();
+  }
+
+  hide(): void {
+    super.hide();
+    this.customIconPackSetting?.hide();
   }
 }
