@@ -3,6 +3,7 @@ import predefinedIconPacks, { PredefinedIconPack } from '@app/icon-packs';
 import IconizePlugin from '@app/main';
 import { downloadZipFile } from '@app/zip-util';
 import { IconPack } from '@app/icon-pack-manager/icon-pack';
+import { redrawIconsInOpenNotes } from '@app/lib/redraw-open-notes';
 
 export default class IconPackBrowserModal extends FuzzySuggestModal<PredefinedIconPack> {
   private plugin: IconizePlugin;
@@ -60,6 +61,8 @@ export default class IconPackBrowserModal extends FuzzySuggestModal<PredefinedIc
     await this.plugin
       .getIconPackManager()
       .registerIconPack(item.name, arrayBuffer);
+    // Open notes still show the icons of the new icon pack as text.
+    redrawIconsInOpenNotes(this.plugin);
 
     new Notice(`...${item.displayName} added`);
     this.onAddedIconPack();

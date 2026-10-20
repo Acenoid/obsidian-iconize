@@ -43,11 +43,7 @@ import {
   buildIconInLinksPlugin,
   buildIconInTextPlugin,
 } from './editor/live-preview';
-import {
-  PositionField,
-  buildPositionField,
-  refreshIconPositions,
-} from './editor/live-preview/state';
+import { PositionField, buildPositionField } from './editor/live-preview/state';
 import { calculateInlineTitleSize } from './lib/util/text';
 import {
   getFrontmatterIcon,
@@ -57,6 +53,7 @@ import {
 import { diffIconData, mergePathEntriesFromDisk } from './lib/data-merge';
 import { addStoredIcons, collectIconSvgs } from './lib/icon-svg-store';
 import { getOriginalPluginWarnings } from './lib/original-plugin';
+import { redrawIconsInOpenNotes } from './lib/redraw-open-notes';
 import {
   IconAvailability,
   IconCheckReport,
@@ -72,8 +69,6 @@ import { logger } from './lib/logger';
 import { EventEmitter } from './lib/event/event';
 import IconizeAPI, { getApi } from './lib/api';
 import { Icon, IconPackManager } from './icon-pack-manager';
-import { LUCIDE_ICON_PACK_NAME } from './icon-pack-manager/lucide';
-import type { EditorView } from '@codemirror/view';
 import {
   getNormalizedName,
   getSvgFromLoadedIcon,
@@ -504,7 +499,7 @@ export default class IconizePlugin extends Plugin {
         await this.saveIconFolderData();
       }
 
-      this.redrawIconsInOpenNotes();
+      redrawIconsInOpenNotes(this);
 
       // Checks the vault for missing icons and adds them.
       if (this.getSettings().iconsBackgroundCheckEnabled) {
@@ -746,38 +741,6 @@ export default class IconizePlugin extends Plugin {
         await customRule.removeFromAllFiles(this, rule);
         await customRule.addToAllFiles(this, rule);
       }
-    }
-  }
-
-  /**
-   * Redraws the icons in open notes, because icons from the icon packs were not
-   * available yet when the notes were rendered at startup.
-   */
-  private redrawIconsInOpenNotes(): void {
-    const hasIconPacksFromFiles = this.iconPackManager
-      .getIconPacks()
-      .some(
-        (iconPack) =>
-          iconPack.getName() !== LUCIDE_ICON_PACK_NAME ||
-          this.doesUseCustomLucideIconPack(),
-      );
-    if (!hasIconPacksFromFiles) {
-      return;
-    }
-
-    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
-      // Deferred views are rendered later with all icons.
-      if (!(leaf.view instanceof MarkdownView)) {
-        continue;
-      }
-
-      if (leaf.view.getMode() === 'preview') {
-        leaf.view.previewMode.rerender(true);
-      }
-
-      const editorView = (leaf.view.editor as unknown as { cm?: EditorView })
-        .cm;
-      editorView?.dispatch({ effects: refreshIconPositions.of(null) });
     }
   }
 
