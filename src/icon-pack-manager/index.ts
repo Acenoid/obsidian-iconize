@@ -20,6 +20,8 @@ export interface Icon {
   svgElement: string;
 }
 
+export type IconPackLoadState = 'loading' | 'loaded' | 'failed';
+
 export class IconPackManager {
   private path: string;
   private iconPacks: IconPack[];
@@ -28,6 +30,7 @@ export class IconPackManager {
 
   private preloadedIcons: Icon[];
   private loadedAll: boolean;
+  private iconPackLoadStates = new Map<string, IconPackLoadState>();
 
   constructor(
     private plugin: IconizePlugin,
@@ -106,9 +109,16 @@ export class IconPackManager {
           continue;
         }
 
-        const arrayBuffer =
-          await this.plugin.app.vault.adapter.readBinary(fileName);
-        zipFiles[iconPackName] = await readZipFile(arrayBuffer);
+        try {
+          const arrayBuffer =
+            await this.plugin.app.vault.adapter.readBinary(fileName);
+          zipFiles[iconPackName] = await readZipFile(arrayBuffer);
+        } catch (error) {
+          // The empty entry keeps the directory of the icon pack from being loaded
+          // as a custom icon pack.
+          zipFiles[iconPackName] = [];
+          this.setIconPackFailed(iconPackName, error);
+        }
       }
     }
 
@@ -130,21 +140,28 @@ export class IconPackManager {
       const iconPack =
         existingIconPack ?? new IconPack(this.plugin, folderName, true);
 
-      const files = await this.fileManager.getFilesInDirectory(
-        `${this.path}/${folderName}`,
-      );
       const loadedIcons: Icon[] = [];
-      // Convert files into loaded svgs.
-      for (let j = 0; j < files.length; j++) {
-        const iconNameRegex = files[j].match(
-          new RegExp(this.path + '/' + folderName + '/(.*)'),
+      try {
+        const files = await this.fileManager.getFilesInDirectory(
+          `${this.path}/${folderName}`,
         );
-        const iconName = getNormalizedName(iconNameRegex[1]);
-        const iconContent = await this.plugin.app.vault.adapter.read(files[j]);
-        const icon = generateIcon(iconPack, iconName, iconContent);
-        if (icon) {
-          loadedIcons.push(icon);
+        // Convert files into loaded svgs.
+        for (let j = 0; j < files.length; j++) {
+          const iconNameRegex = files[j].match(
+            new RegExp(this.path + '/' + folderName + '/(.*)'),
+          );
+          const iconName = getNormalizedName(iconNameRegex[1]);
+          const iconContent = await this.plugin.app.vault.adapter.read(
+            files[j],
+          );
+          const icon = generateIcon(iconPack, iconName, iconContent);
+          if (icon) {
+            loadedIcons.push(icon);
+          }
         }
+      } catch (error) {
+        this.setIconPackFailed(folderName, error);
+        continue;
       }
 
       iconPack.setIcons(loadedIcons);
@@ -154,13 +171,15 @@ export class IconPackManager {
       logger.info(
         `Loaded icon pack '${folderName}' (amount of icons: ${loadedIcons.length})`,
       );
+      this.setIconPackLoaded(folderName);
     }
 
     // Extract all files from the zip files.
     for (const zipFile in zipFiles) {
       if (
-        zipFile === LUCIDE_ICON_PACK_NAME &&
-        !this.plugin.doesUseCustomLucideIconPack()
+        (zipFile === LUCIDE_ICON_PACK_NAME &&
+          !this.plugin.doesUseCustomLucideIconPack()) ||
+        this.iconPackLoadStates.get(zipFile) === 'failed'
       ) {
         continue;
       }
@@ -169,10 +188,16 @@ export class IconPackManager {
       const existingIconPack = this.getIconPackByName(zipFile);
       const iconPack =
         existingIconPack ?? new IconPack(this.plugin, zipFile, false);
-      const loadedIcons: Icon[] = await this.fileManager.getIconsFromZipFile(
-        iconPack,
-        files,
-      );
+      let loadedIcons: Icon[];
+      try {
+        loadedIcons = await this.fileManager.getIconsFromZipFile(
+          iconPack,
+          files,
+        );
+      } catch (error) {
+        this.setIconPackFailed(zipFile, error);
+        continue;
+      }
 
       iconPack.setIcons(loadedIcons);
       if (!existingIconPack) {
@@ -181,9 +206,39 @@ export class IconPackManager {
       logger.info(
         `Loaded icon pack '${zipFile}' (amount of icons: ${loadedIcons.length})`,
       );
+      this.setIconPackLoaded(zipFile);
     }
 
     this.loadedAll = true;
+
+    if (
+      Array.from(this.iconPackLoadStates.values()).some(
+        (loadState) => loadState === 'failed',
+      )
+    ) {
+      new Notice(
+        `[${config.PLUGIN_NAME}] One or more icon packs could not be loaded.`,
+      );
+    }
+  }
+
+  private setIconPackLoaded(name: string): void {
+    this.iconPackLoadStates.set(name, 'loaded');
+    this.plugin
+      .getEventEmitter()
+      .emit('iconPackLoaded', { iconPackName: name, success: true });
+  }
+
+  /**
+   * Logs the error of an icon pack that could not be read, so that the other icon
+   * packs can still be loaded.
+   */
+  private setIconPackFailed(name: string, error: unknown): void {
+    logger.error(`Could not load icon pack '${name}'`, undefined, error);
+    this.iconPackLoadStates.set(name, 'failed');
+    this.plugin
+      .getEventEmitter()
+      .emit('iconPackLoaded', { iconPackName: name, success: false, error });
   }
 
   public async createDefaultDirectory(): Promise<void> {
@@ -465,6 +520,18 @@ export class IconPackManager {
    */
   public hasLoadedAll(): boolean {
     return this.loadedAll;
+  }
+
+  /**
+   * Returns whether the icons of the given icon pack are still read in
+   * {@link loadAll}, were read or could not be read. An `iconPackLoaded` event is
+   * emitted when this changes.
+   */
+  public getIconPackLoadState(name: string): IconPackLoadState {
+    return (
+      this.iconPackLoadStates.get(name) ??
+      (this.loadedAll ? 'loaded' : 'loading')
+    );
   }
 
   public getPreloadedIcons(): Icon[] {

@@ -1,10 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
 import { Notice } from 'obsidian';
 import { IconPackManager } from '.';
 import { IconPack } from './icon-pack';
 import { LUCIDE_ICON_PACK_NAME } from './lucide';
 import IconizePlugin from '@app/main';
+import { EventEmitter } from '@app/lib/event/event';
+import { IconPackLoadedEvent } from '@app/lib/event/events';
+import { logger } from '@app/lib/logger';
 
 vi.mock('obsidian', () => ({
   Notice: vi.fn(),
@@ -37,7 +40,46 @@ const makePlugin = (adapterOverrides: Record<string, unknown> = {}) =>
     doesUseNativeLucideIconPack: vi.fn(() => false),
     doesUseCustomLucideIconPack: vi.fn(() => false),
     getIconPackManager: vi.fn(),
+    getEventEmitter: vi.fn(() => eventEmitter),
   }) as unknown as IconizePlugin;
+
+let eventEmitter: EventEmitter;
+let loadedIconPackEvents: IconPackLoadedEvent['payload'][];
+
+beforeEach(() => {
+  eventEmitter = new EventEmitter();
+  loadedIconPackEvents = [];
+  eventEmitter.on('iconPackLoaded', (event) =>
+    loadedIconPackEvents.push(event.payload),
+  );
+});
+
+const SVG_CONTENT = '<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>';
+
+const FAILED_NOTICE = '[iconize26] One or more icon packs could not be loaded.';
+
+const createZipFile = async (fileName: string) => {
+  const zip = new JSZip();
+  zip.file(fileName, SVG_CONTENT);
+  return zip.generateAsync({ type: 'arraybuffer' });
+};
+
+/**
+ * Expects that the icon pack `broken` could not be read and that the icon pack
+ * `working` was still loaded.
+ */
+const expectBrokenIconPackSkipped = (manager: IconPackManager) => {
+  expect(manager.getIconPackLoadState('broken')).toBe('failed');
+  expect(manager.getIconPackLoadState('working')).toBe('loaded');
+  expect(manager.getIconPackByName('working').getIcons()).toHaveLength(1);
+  expect(manager.hasLoadedAll()).toBe(true);
+  expect(loadedIconPackEvents).toEqual([
+    { iconPackName: 'broken', success: false, error: expect.anything() },
+    { iconPackName: 'working', success: true },
+  ]);
+  expect(Notice).toHaveBeenCalledTimes(1);
+  expect(Notice).toHaveBeenCalledWith(FAILED_NOTICE);
+};
 
 describe('IconPackManager.loadAll', () => {
   it('should load icons from a custom directory pack into the icon pack', async () => {
@@ -127,6 +169,143 @@ describe('IconPackManager.loadAll', () => {
     expect(plugin.app.vault.adapter.readBinary).not.toHaveBeenCalled();
     expect(plugin.app.vault.adapter.read).not.toHaveBeenCalled();
     expect(manager.getIconPacks()).toHaveLength(0);
+  });
+
+  it('should emit an event for each icon pack as soon as its icons were read', async () => {
+    let resolveSecondIcon: (content: string) => void;
+    const secondIcon = new Promise<string>((resolve) => {
+      resolveSecondIcon = resolve;
+    });
+    const plugin = makePlugin({
+      list: vi.fn((path: string) => {
+        if (path === ICONS_PATH) {
+          return Promise.resolve({
+            files: [],
+            folders: [`${ICONS_PATH}/first`, `${ICONS_PATH}/second`],
+          });
+        }
+        return Promise.resolve({ files: [`${path}/Icon.svg`], folders: [] });
+      }),
+      read: vi.fn((path: string) =>
+        path.startsWith(`${ICONS_PATH}/second/`)
+          ? secondIcon
+          : Promise.resolve(SVG_CONTENT),
+      ),
+    });
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    const firstLoaded = new Promise<void>((resolve) =>
+      eventEmitter.once('iconPackLoaded', () => resolve()),
+    );
+
+    const loading = manager.loadAll();
+    await firstLoaded;
+
+    expect(loadedIconPackEvents).toEqual([
+      { iconPackName: 'first', success: true },
+    ]);
+    expect(manager.getIconPackLoadState('first')).toBe('loaded');
+    expect(manager.getIconPackByName('first').getIcons()).toHaveLength(1);
+    expect(manager.getIconPackLoadState('second')).toBe('loading');
+
+    resolveSecondIcon(SVG_CONTENT);
+    await loading;
+
+    expect(loadedIconPackEvents).toEqual([
+      { iconPackName: 'first', success: true },
+      { iconPackName: 'second', success: true },
+    ]);
+    expect(manager.getIconPackLoadState('second')).toBe('loaded');
+    expect(Notice).not.toHaveBeenCalled();
+  });
+
+  it('should report icon packs without their own event as loaded once all icon packs were read', async () => {
+    const plugin = makePlugin({
+      list: vi.fn().mockResolvedValue({ files: [], folders: [] }),
+    });
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+
+    expect(manager.getIconPackLoadState(LUCIDE_ICON_PACK_NAME)).toBe('loading');
+    await manager.loadAll();
+    expect(manager.getIconPackLoadState(LUCIDE_ICON_PACK_NAME)).toBe('loaded');
+    expect(loadedIconPackEvents).toEqual([]);
+  });
+
+  it('should skip an icon pack whose zip file cannot be read and load the other icon packs', async () => {
+    const workingZip = await createZipFile('icon.svg');
+    const plugin = makePlugin({
+      list: vi.fn().mockResolvedValue({
+        files: [`${ICONS_PATH}/broken.zip`, `${ICONS_PATH}/working.zip`],
+        folders: [`${ICONS_PATH}/broken`],
+      }),
+      readBinary: vi.fn((path: string) =>
+        Promise.resolve(
+          path.endsWith('broken.zip') ? new ArrayBuffer(8) : workingZip,
+        ),
+      ),
+    });
+    const loggerError = vi.spyOn(logger, 'error');
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+
+    await manager.loadAll();
+
+    expectBrokenIconPackSkipped(manager);
+    expect(loggerError).toHaveBeenCalledWith(
+      "Could not load icon pack 'broken'",
+      undefined,
+      expect.anything(),
+    );
+    // The directory of the broken icon pack is not loaded as a custom icon pack.
+    expect(manager.getIconPackByName('broken')).toBeUndefined();
+    expect(plugin.app.vault.adapter.read).not.toHaveBeenCalled();
+  });
+
+  it('should skip an icon pack whose icons cannot be read from its zip file', async () => {
+    const zip = await createZipFile('icon.svg');
+    const plugin = makePlugin({
+      list: vi.fn().mockResolvedValue({
+        files: [`${ICONS_PATH}/broken.zip`, `${ICONS_PATH}/working.zip`],
+        folders: [],
+      }),
+      readBinary: vi.fn().mockResolvedValue(zip),
+    });
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    const fileManager = manager.getFileManager();
+    const getIconsFromZipFile =
+      fileManager.getIconsFromZipFile.bind(fileManager);
+    vi.spyOn(fileManager, 'getIconsFromZipFile').mockImplementation(
+      (iconPack, files) =>
+        iconPack.getName() === 'broken'
+          ? Promise.reject(new Error('Invalid icon'))
+          : getIconsFromZipFile(iconPack, files),
+    );
+
+    await manager.loadAll();
+
+    expectBrokenIconPackSkipped(manager);
+  });
+
+  it('should skip a custom icon pack whose icons cannot be read', async () => {
+    const plugin = makePlugin({
+      list: vi.fn((path: string) => {
+        if (path === ICONS_PATH) {
+          return Promise.resolve({
+            files: [],
+            folders: [`${ICONS_PATH}/broken`, `${ICONS_PATH}/working`],
+          });
+        }
+        return Promise.resolve({ files: [`${path}/Icon.svg`], folders: [] });
+      }),
+      read: vi.fn((path: string) =>
+        path.startsWith(`${ICONS_PATH}/broken/`)
+          ? Promise.reject(new Error('Cannot read file'))
+          : Promise.resolve(SVG_CONTENT),
+      ),
+    });
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+
+    await manager.loadAll();
+
+    expectBrokenIconPackSkipped(manager);
   });
 });
 
