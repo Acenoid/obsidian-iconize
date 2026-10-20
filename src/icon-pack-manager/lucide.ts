@@ -50,7 +50,7 @@ export class LucideIconPack {
   }
 
   public async addCustom(): Promise<void> {
-    await this.iconPackManager.removeIconPack(this.iconPack);
+    await this.removeCustom();
 
     this.iconPack = new IconPack(this.plugin, LUCIDE_ICON_PACK_NAME, true);
     const arrayBuffer = await downloadZipFile(
@@ -70,6 +70,10 @@ export class LucideIconPack {
   }
 
   public async removeCustom(): Promise<void> {
-    await this.iconPackManager.removeIconPack(this.iconPack);
+    // The icon pack is unknown when Obsidian started without a Lucide icon pack, for
+    // example with the setting `None`. Its files are then removed by its name.
+    await this.iconPackManager.removeIconPack(
+      this.iconPack ?? new IconPack(this.plugin, LUCIDE_ICON_PACK_NAME, false),
+    );
   }
 }
