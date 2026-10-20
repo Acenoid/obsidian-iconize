@@ -128,4 +128,26 @@ describe('generateIcon', () => {
     expect(result?.svgContent).toBe('<path />');
     expect(result?.svgViewbox).toBe('viewBox="0 0 24 24"');
   });
+
+  it('should ignore a comment before the SVG element', () => {
+    const result = generateIcon(
+      mockIconPack,
+      'home',
+      `<!--
+tags: [home, house]
+version: "1.0"
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 24 24"
+>
+  <path d="M5 12l-2 0l9 -9l9 9l-2 0" />
+</svg>
+`,
+    );
+
+    expect(result?.svgContent).toBe('<path d="M5 12l-2 0l9 -9l9 9l-2 0" />');
+    expect(result?.svgViewbox).toBe('viewBox="0 0 24 24"');
+    expect(result?.svgElement).toMatch(/^<svg/);
+  });
 });

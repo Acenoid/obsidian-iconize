@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getExtraPath, isInExtraPath } from './icon-packs';
+import { getExtraPath, getLegacyPaths, isInExtraPath } from './icon-packs';
 
 it('should return the correct extra path for an icon pack', () => {
   const iconPackName = 'simple-icons';
-  const expectedPath = 'simple-icons-16.15.0/icons/';
+  const expectedPath = 'simple-icons-16.35.0/icons/';
 
   const path = getExtraPath(iconPackName);
 
@@ -19,12 +19,12 @@ it('should return `undefined` for an icon pack that does not exist', () => {
 });
 
 describe('isInExtraPath', () => {
-  const extraPath = 'fontawesome-free-7.2.0-web/svgs/regular/';
+  const extraPath = 'fontawesome-free-7.3.1-web/svgs/regular/';
 
   it('should return `true` for a file in the extra path', () => {
     expect(
       isInExtraPath(
-        'fontawesome-free-7.2.0-web/svgs/regular/address-card.svg',
+        'fontawesome-free-7.3.1-web/svgs/regular/address-card.svg',
         extraPath,
       ),
     ).toBe(true);
@@ -52,5 +52,16 @@ describe('isInExtraPath', () => {
   it('should not ignore the directory of an extra path with only one directory', () => {
     expect(isInExtraPath('svg/arrow.svg', 'svg')).toBe(true);
     expect(isInExtraPath('other/svg/arrow.svg', 'svg')).toBe(false);
+  });
+});
+
+describe('getLegacyPaths', () => {
+  it('should return the paths of older zip files of an icon pack', () => {
+    expect(getLegacyPaths('tabler-icons')).toEqual(['svg']);
+  });
+
+  it('should return an empty array for an icon pack without legacy paths', () => {
+    expect(getLegacyPaths('simple-icons')).toEqual([]);
+    expect(getLegacyPaths('non-existent-icon-pack')).toEqual([]);
   });
 });
