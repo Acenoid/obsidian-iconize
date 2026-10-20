@@ -33,12 +33,18 @@ export const processIconInLinkMarkdown = (
       return;
     }
 
+    // Links to a heading or block (`Note#Heading`, `Note#^block`) contain a
+    // subpath, which `getFirstLinkpathDest` does not know. A link within the
+    // note (`#Heading`) is left with an empty linkpath, which resolves to the
+    // note itself.
+    const linkpath = linkHref.split('#')[0];
     const file = plugin.app.metadataCache.getFirstLinkpathDest(
-      linkHref,
+      linkpath,
       ctx.sourcePath,
     );
     if (!file) {
-      logger.warn('Link element does not have a linkpath to a file');
+      // Links to notes that do not exist yet are normal, so this is no warning.
+      logger.log('Link element does not have a linkpath to a file');
       return;
     }
 
