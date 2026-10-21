@@ -42,6 +42,11 @@ jobs:
       - name: Run unit tests
         run: pnpm test:coverage
 
+      # Vitest strips the types without checking them. The type errors of
+      # dependencies are skipped, as they are not part of this plugin.
+      - name: Check types
+        run: pnpm typecheck
+
       - name: Report Coverage
         if: always()
         uses: davelosert/vitest-coverage-report-action@v2
