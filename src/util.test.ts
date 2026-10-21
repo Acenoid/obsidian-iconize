@@ -7,6 +7,9 @@ import {
   saveIconToIconPack,
   stringToHex,
 } from './util';
+import { Icon } from './icon-pack-manager';
+import { IconPack } from './icon-pack-manager/icon-pack';
+import { generateIcon } from './icon-pack-manager/util';
 
 describe('readFileSync', () => {
   it('should read file content', async () => {
@@ -52,32 +55,56 @@ describe('getAllOpenedFiles', () => {
 });
 
 describe('saveIconToIconPack', () => {
-  const plugin: any = {
-    getIconPackManager: () => ({
-      getSvgFromLoadedIcon: vi.fn(() => '<svg></svg>'),
-      getIconPackNameByPrefix: vi.fn(() => ''),
-      addIconToIconPack: vi.fn(() => ({ name: 'IbTest' })),
-      extractIcon: vi.fn(() => {}),
-    }),
+  const createPlugin = (preloadedIcons: Icon[], iconPack: IconPack): any => {
+    const iconPackManager = {
+      getPreloadedIcons: () => preloadedIcons,
+      getIconPacks: () => [iconPack],
+      getIconPackByPrefix: () => iconPack,
+      extractIcon: vi.fn(() => Promise.resolve()),
+    };
+    return {
+      getIconPackManager: () => iconPackManager,
+      doesUseCustomLucideIconPack: () => false,
+    };
   };
 
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
+  const createIcon = (iconPack: IconPack): Icon =>
+    generateIcon(
+      iconPack,
+      'Test',
+      '<svg viewBox="0 0 24 24"><path d="M0 0h24v24H0z"></path></svg>',
+    );
 
   it('should not save icon to icon pack when svg was not found', () => {
-    expect.assertions(2);
-    try {
-      saveIconToIconPack({} as any, 'IbTest');
-    } catch (e) {
-      expect(e).not.toBeNull();
-    }
-    expect(plugin.getIconPackManager().extractIcon).toBeCalledTimes(0);
+    const iconPack = new IconPack({} as any, 'icon-brew', false);
+    const plugin = createPlugin([], iconPack);
+
+    expect(() => saveIconToIconPack(plugin, 'IbTest')).toThrow(
+      'Icon IbTest could not be found.',
+    );
+    expect(plugin.getIconPackManager().extractIcon).not.toHaveBeenCalled();
   });
 
   it('should save icon to icon pack', () => {
-    saveIconToIconPack({} as any, 'IbTest');
-    expect(plugin.getIconPackManager().extractIcon).toBeCalledTimes(1);
+    const iconPack = new IconPack({} as any, 'icon-brew', false);
+    const icon = createIcon(iconPack);
+    iconPack.setIcons([icon]);
+    const plugin = createPlugin([], iconPack);
+
+    saveIconToIconPack(plugin, 'IbTest');
+
+    expect(plugin.getIconPackManager().extractIcon).toHaveBeenCalledWith(
+      icon,
+      icon.svgElement,
+    );
+  });
+
+  it('should not extract a preloaded icon before its icon pack is loaded', () => {
+    const iconPack = new IconPack({} as any, 'icon-brew', false);
+    const plugin = createPlugin([createIcon(iconPack)], iconPack);
+
+    expect(() => saveIconToIconPack(plugin, 'IbTest')).not.toThrow();
+    expect(plugin.getIconPackManager().extractIcon).not.toHaveBeenCalled();
   });
 });
 
@@ -103,7 +130,7 @@ describe.skip('removeIconFromIconPack', () => {
     ).toBeCalledTimes(0);
   });
 
-  it.only('should remove icon from icon pack if there is no duplicated icon', () => {
+  it('should remove icon from icon pack if there is no duplicated icon', () => {
     plugin.getDataPathByValue = () => '';
     removeIconFromIconPack(plugin, 'IbTest');
     expect(

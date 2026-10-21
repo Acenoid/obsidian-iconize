@@ -90,6 +90,13 @@ export const saveIconToIconPack = (
   }
 
   const icon = iconPack.getIcon(iconName);
+  // The zip files of the icon packs are read in the background after the start, so
+  // the icon pack might not contain the icon yet. Its SVG was then preloaded from its
+  // file or from `iconSvgs`, so there is nothing to extract.
+  if (!icon) {
+    return;
+  }
+
   plugin.getIconPackManager().extractIcon(icon, possibleIcon);
 };
 
