@@ -399,6 +399,52 @@ describe('IconPackManager with custom icon packs', () => {
   });
 });
 
+describe('IconPackManager.loadUsedIcons', () => {
+  it('should not report an icon without an SVG file as missing before the zip files were read', async () => {
+    const plugin = makePlugin({
+      list: vi.fn().mockResolvedValue({
+        files: [`${ICONS_PATH}/remix-icons.zip`],
+        folders: [],
+      }),
+      exists: vi.fn().mockResolvedValue(false),
+    });
+    const loggerError = vi.spyOn(logger, 'error');
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    await manager.init();
+
+    await manager.loadUsedIcons(['RiUserFill']);
+
+    expect(manager.getPreloadedIcons()).toHaveLength(0);
+    expect(loggerError).not.toHaveBeenCalled();
+  });
+
+  it('should report an icon as missing that is not in its zip file', async () => {
+    const zip = await createZipFile('walk-line.svg');
+    const plugin = makePlugin({
+      list: vi.fn().mockResolvedValue({
+        files: [`${ICONS_PATH}/remix-icons.zip`],
+        folders: [],
+      }),
+      exists: vi.fn().mockResolvedValue(false),
+      readBinary: vi.fn().mockResolvedValue(zip),
+    });
+    const loggerError = vi.spyOn(logger, 'error');
+    const manager = new IconPackManager(plugin, ICONS_PATH);
+    await manager.init();
+    await manager.loadAll();
+
+    await manager.loadUsedIcons(['RiWalkLine', 'RiUserFill']);
+
+    expect(
+      manager.getPreloadedIcons().map((icon) => icon.prefix + icon.name),
+    ).toEqual(['RiWalkLine']);
+    expect(loggerError).toHaveBeenCalledTimes(1);
+    expect(loggerError).toHaveBeenCalledWith(
+      `Icon with name 'UserFill' was not found (full path: ${ICONS_PATH}/remix-icons/UserFill.svg)`,
+    );
+  });
+});
+
 describe('IconPackManager.removeIconPack', () => {
   it('should only remove the given icon pack', async () => {
     const plugin = makePlugin({

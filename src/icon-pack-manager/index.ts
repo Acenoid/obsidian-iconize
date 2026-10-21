@@ -345,6 +345,13 @@ export class IconPackManager {
       return;
     }
 
+    // The zip files are read in the background after the start. Until then, the icon
+    // can still come from the SVGs stored in `data.json`, and it is loaded again from
+    // its zip file afterwards.
+    if (!this.loadedAll) {
+      return;
+    }
+
     // Only error if both disk and memory sources fail
     logger.error(
       `Icon with name '${name}' was not found (full path: ${fullPath})`,
