@@ -356,35 +356,40 @@ export default class IconizePlugin extends Plugin {
     // may run before the file-explorer has painted the new row, in which case
     // dom.createIconNode silently no-ops. This handler is the backstop: it
     // waits one paint and tries again.
-    this.registerEvent(
-      this.app.vault.on('create', (file) => {
-        if (!(file instanceof TFile)) return;
-        if (!this.getSettings().iconInFrontmatterEnabled) return;
+    // Obsidian also fires `create` for every existing file while the vault
+    // loads. Registering after the layout is ready skips those events, whose
+    // icons `handleChangeLayout` adds anyway.
+    this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(
+        this.app.vault.on('create', (file) => {
+          if (!(file instanceof TFile)) return;
+          if (!this.getSettings().iconInFrontmatterEnabled) return;
 
-        requestAnimationFrame(() => {
-          const { iconName, iconColor } = getFrontmatterIcon(this, file);
-          if (!iconName) return;
+          requestAnimationFrame(() => {
+            const { iconName, iconColor } = getFrontmatterIcon(this, file);
+            if (!iconName) return;
 
-          syncFolderNoteIcon(this, file.path, iconName, iconColor);
+            syncFolderNoteIcon(this, file.path, iconName, iconColor);
 
-          if (
-            document.querySelector(`[data-path="${file.path}"] .iconize-icon`)
-          ) {
-            return;
-          }
+            if (
+              document.querySelector(`[data-path="${file.path}"] .iconize-icon`)
+            ) {
+              return;
+            }
 
-          const attached = dom.createIconNode(this, file.path, iconName, {
-            color: iconColor,
-          });
-          if (attached) {
-            IconCache.getInstance().set(file.path, {
-              iconNameWithPrefix: iconName,
-              iconColor,
+            const attached = dom.createIconNode(this, file.path, iconName, {
+              color: iconColor,
             });
-          }
-        });
-      }),
-    );
+            if (attached) {
+              IconCache.getInstance().set(file.path, {
+                iconNameWithPrefix: iconName,
+                iconColor,
+              });
+            }
+          });
+        }),
+      );
+    });
 
     // Reload icons when data.json changes on disk. Obsidian Sync writes the
     // file directly (bypassing the plugin), so without this the running
